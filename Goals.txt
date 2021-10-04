@@ -1,0 +1,125 @@
+(load "Promisory\defaultConstants")
+(load "Promisory\finalingConstants")
+
+;Reusing obsolete strategic numbers that have no other effect.
+(defconst sn-infantry-threat 53)
+(defconst sn-archer-threat 64)
+(defconst sn-cavalry-threat 65)
+(defconst sn-military-level 190)
+(defconst sn-resource-control 191)
+(defconst sn-civilian-number 192)
+(defconst sn-total-number 193)
+(defconst teambalance 204)
+(defconst sn-current-age 205)
+
+;Goals
+(defconst increase-town-size-goal 1); this increases town size when needed, 0 = no increase, 2 = building placed this rule pass, else increase
+(defconst attack-goal 2)
+(defconst strategy-goal 3)
+(defconst unit-goal 4)
+(defconst train-civ-goal 5)
+(defconst control-goal 6); 6 = allow to be shot, 7 = shot, also controls if stone for a castle is needed.
+(defconst anti-cavalry-threat-goal 7)
+(defconst monk-threat-goal 8)
+(defconst enemy-goal 9); enemy strategy
+(defconst farm-goal 10)
+(defconst under-attack-goal 11); town under attack or just a little harass?
+(defconst enemy-boats-goal 12)
+(defconst ffa-game-goal 13)
+(defconst need-loom-goal 14)
+(defconst escrow-purpose-goal 15); keeps track on what we use our escrow
+(defconst spread-military-goal 16); spread military every couple of minutes to prevent villagers stuck
+(defconst uu-up-goal 17); use escrow to upgrade uu
+(defconst hostilities-goal 18); set this flag when we're attacked or attacking - avoid rule too long error
+(defconst ranged-unit-type-goal 19);shows the ranged unit we use
+(defconst retreat-now-goal 20); use to retreat with UP, condition: 1=always, 2=when attacking, 3=attack conditions false
+(defconst housing-goal 21); used to build multiple houses with UP
+(defconst anti-monk-threat-goal 22)
+(defconst enemy-sighted-goal 23); when enemy activities detected, split the attack groups
+(defconst attack-status-goal 24); indicates if we stop or regroup the attack
+(defconst forward-threat-goal 25); enemy tower rush threat
+(defconst enemy-fortifications-goal 26); delay attacks if enemy has many castles and walled with castle
+(defconst restart-attack-goal 27); restarts attack in team games if TSA was reduced to place a building
+(defconst save-wood-goal 28); controls spending wood
+(defconst meso-enemy-goal 29); enemy has a meso civ; saves elements in a rule
+(defconst nr-map-goal 30); focus on eco in easily wall-able maps vs humans
+(defconst tribute-goal 31); ask for resources
+(defconst assistance 32)
+(defconst treaty-time 33)
+(defconst tc-dodging-goal 34); move scout out of TC fire
+(defconst kill-scouts-goal 35); kill enemy scouts
+(defconst forward-goal 36); -1 no fwd, 1 fwd, ID of building = building requested
+(defconst gather-inside-goal 37)
+(defconst hunting-goal 38); controls hunting
+(defconst micro-goal 41)
+(defconst math-goal 42); temporary stored values
+(defconst math-goal2 43)
+(defconst math-goal3 44)
+(defconst math-goal4 45)
+(defconst position-goal 46); detect if we're pocket (=2) or flank (=1) player; was here before that many goals were used, shared with other AI
+(defconst raid-goal 47); raiding weak player's eco.
+(defconst closest-enemy-goal 48); stores player number of nearest enemy
+(defconst threat-time 49); stores time in miliseconds we were last attacked
+(defconst threat-player 50); stores player number of the attacker
+(defconst threat-source 51); unit class of the last enemy attacker
+(defconst threat-target 52); unit class of the our last attacked unit
+(defconst winning-player 53); player number of enemy winning by specifal victory condition
+(defconst victory-type 54); winning type
+(defconst victory-time 55); time left
+(defconst retargetenemy 56)
+(defconst defendchat 57)
+(defconst dark-build-order-goal 58); 1 = dock first, 2 = skip farms on a map that has more berries
+(defconst closest-ally-goal 59); stores closes flank if pocket instead
+(defconst forgotten 60); set to 1 if the forgotten empires expansion is detected
+(defconst attacking-enemy-goal 61); stores player number of the attacker; shared with Barbarian
+(defconst reset 62); prov
+(defconst relic-count 63)
+(defconst stanceg 64)
+(defconst request 65)
+(defconst nomad 66)
+(defconst landnomad 67)
+(defconst request2 68)
+(defconst jumpgoal 69)
+(defconst navy-count 70)
+(defconst max-navy 71)
+(defconst biggest-enemy-navy 72)
+(defconst enemy-focus-navy 73)
+(defconst allies 74)
+(defconst enemies 75)
+(defconst trade-units 76)
+(defconst feitoria-cap 77)
+
+(defconst custom-civ-pop 79)
+(defconst FDTaunt 80)
+(defconst FDTaunt2 81)
+
+(defconst team-coordination-goal 392)
+
+
+;SN/Goal Values
+(defconst yes 1)
+(defconst no 0)
+(defconst dark 78)
+(defconst df-transit 79)
+(defconst feudal 80)
+(defconst fc-transit 81)
+(defconst castle 82)
+(defconst ci-transit 83)
+(defconst imperial 84)
+(defconst flush 200)
+(defconst rush 201)
+(defconst boom 202)
+(defconst fast-imp 203)
+(defconst sling 204)
+(defconst drush 205); not used ... yet
+(defconst mix 1)
+(defconst belated-flush-defense 5)
+(defconst aggressive-rush 6)
+(defconst shot 7)
+(defconst uu 8)
+(defconst navy 4000)
+(defconst flank 1)
+(defconst pocket 2)
+(defconst retreat 1)
+(defconst groups 2)
+(defconst tsa 3)
