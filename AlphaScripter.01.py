@@ -4,10 +4,7 @@ import pytesseract
 import pyautogui
 import time
 import pydirectinput
-from collections import OrderedDict
 pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
-
-pyautogui.failsafe = False
 
 #alphabet = 'abcdefghijklmnopqrstuvwxyz'
 #temp = []
@@ -21,29 +18,13 @@ pyautogui.failsafe = False
 
 alphavalues = ['aa', 'ab', 'ac', 'ad', 'ae', 'af', 'ag', 'ah', 'ai', 'aj', 'ak', 'al', 'am', 'an', 'ao', 'ap', 'aq', 'ar', 'as', 'at', 'au', 'av', 'aw', 'ax', 'ay', 'az', 'ba', 'bb', 'bc', 'bd', 'be', 'bf', 'bg', 'bh', 'bi', 'bj', 'bk', 'bl', 'bm', 'bn', 'bo', 'bp', 'bq', 'br', 'bs', 'bt', 'bu', 'bv', 'bw', 'bx', 'by', 'bz', 'ca', 'cb', 'cc', 'cd', 'ce', 'cf', 'cg', 'ch', 'ci', 'cj', 'ck', 'cl', 'cm', 'cn', 'co', 'cp', 'cq', 'cr', 'cs', 'ct', 'cu', 'cv', 'cw', 'cx', 'cy', 'cz', 'da', 'db', 'dc', 'dd', 'de', 'df', 'dg', 'dh', 'di', 'dj', 'dk', 'dl', 'dm', 'dn', 'do', 'dp', 'dq', 'dr', 'ds', 'dt', 'du', 'dv', 'dw', 'dx', 'dy', 'dz', 'ea', 'eb', 'ec', 'ed', 'ee', 'ef', 'eg', 'eh', 'ei', 'ej', 'ek', 'el', 'em', 'en', 'eo', 'ep', 'eq', 'er', 'es', 'et', 'eu', 'ev', 'ew', 'ex', 'ey', 'ez', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fh', 'fi', 'fj', 'fk', 'fl', 'fm', 'fn', 'fo', 'fp', 'fq', 'fr', 'fs', 'ft', 'fu', 'fv', 'fw', 'fx', 'fy', 'fz', 'ga', 'gb', 'gc', 'gd', 'ge', 'gf', 'gg', 'gh', 'gi', 'gj', 'gk', 'gl', 'gm', 'gn', 'go', 'gp', 'gq', 'gr', 'gs', 'gt', 'gu', 'gv', 'gw', 'gx', 'gy', 'gz', 'ha', 'hb', 'hc', 'hd', 'he', 'hf', 'hg', 'hh', 'hi', 'hj', 'hk', 'hl', 'hm', 'hn', 'ho', 'hp', 'hq', 'hr', 'hs', 'ht', 'hu', 'hv', 'hw', 'hx', 'hy', 'hz', 'ia', 'ib', 'ic', 'id', 'ie', 'if', 'ig', 'ih', 'ii', 'ij', 'ik', 'il', 'im', 'in', 'io', 'ip', 'iq', 'ir', 'is', 'it', 'iu', 'iv', 'iw', 'ix', 'iy', 'iz', 'ja', 'jb', 'jc', 'jd', 'je', 'jf', 'jg', 'jh', 'ji', 'jj', 'jk', 'jl', 'jm', 'jn', 'jo', 'jp', 'jq', 'jr', 'js', 'jt', 'ju', 'jv', 'jw', 'jx', 'jy', 'jz', 'ka', 'kb', 'kc', 'kd', 'ke', 'kf', 'kg', 'kh', 'ki', 'kj', 'kk', 'kl', 'km', 'kn', 'ko', 'kp', 'kq', 'kr', 'ks', 'kt', 'ku', 'kv', 'kw', 'kx', 'ky', 'kz', 'la', 'lb', 'lc', 'ld', 'le', 'lf', 'lg', 'lh', 'li', 'lj', 'lk', 'll', 'lm', 'ln']
 
-#read pre parsed actions
 f = open("mb_actions.txt","r")
 actions = f.read().split(",")
 f.close()
 
-#remove cheats
-temp = []
-for i in range(len(actions)):
-    if "cc-" not in actions[i]:
-        temp.append(actions[i])
-    temp.append("\t")
-
-actions = temp
-
-#read pre parsed facts
 f = open("mb_conditions.txt","r")
 conditions = f.read().split(",")
-conditions.append("\t")
 f.close()
-
-#remove dupes
-actions = list(OrderedDict.fromkeys(actions))
-conditions = list(OrderedDict.fromkeys(conditions))
 
 def static_code():
     f = open("Goals.txt", "r")
@@ -65,7 +46,7 @@ def read_run_length():
 
 def start_game():
     find_button("play_again.PNG")
-    #find_button("ok.PNG")
+    find_button("ok.PNG")
 
 def clean(string):
 
@@ -102,7 +83,6 @@ def end_game():
             find_button("open_menu.PNG")
             find_button("quit.PNG")
             find_button("yes.PNG")
-            print("timed out")
             return True
         try:
             x, y = pyautogui.locateCenterOnScreen('leave.png', confidence=0.9)
@@ -121,64 +101,22 @@ def generate_constants():
 def generate_rules(count):
     rules = []
     for i in range(count):
-        conditions1 = [random.choice(conditions),random.choice(conditions),random.choice(conditions)]
-        actions1 = [random.choice(actions),random.choice(actions),random.choice(actions)]
-        alphavalues1 = [random.choice(alphavalues),random.choice(alphavalues),random.choice(alphavalues),random.choice(alphavalues),random.choice(alphavalues),random.choice(alphavalues)]
-
-        rules.append([conditions1,actions1,alphavalues1])
-
-        #print(conditions1)
+        rules.append([random.choice(conditions),random.choice(alphavalues),random.choice(actions),random.choice(alphavalues)])
     return rules
 
 def mutate_rules(list):
-
-    rules1 = []
-
-    for x in range(len(list)):
-        conditions1 = list[x][0].copy()
-        actions1 = list[x][1].copy()
-        alphavalues1 = list[x][2].copy()
-
-        for i in range(len(conditions1)):
-            conditions1[i] = mutate_single(conditions,conditions1[i])
-            actions1[i] = mutate_single(actions,actions1[i])
-
-        for i in range(len(alphavalues1)):
-            alphavalues1[i] = mutate_single(alphavalues,alphavalues1[i])
-
-        rules1.append([conditions1,actions1,alphavalues1])
-
-    return rules1
-
-def mutate_single(list, item):
-    if random.random() < .05:
-        return random.choice(list)
-    else:
-        return item
-
-def write_rules(list):
-    string = ""
-
-    #print(list)
-
+    list2 = list.copy()
     for i in range(len(list)):
+        if random.random() < .05:
+            list2[i][0] = random.choice(conditions)
+        if random.random() < .05:
+            list2[i][1] = random.choice(alphavalues)
+        if random.random() < .05:
+            list2[i][2] = random.choice(actions)
+        if random.random() < .05:
+            list2[i][3] = random.choice(alphavalues)
 
-        conditions1 = list[i][0].copy()
-        actions1 = list[i][1].copy()
-        alphavalues1 = list[i][2].copy()
-
-
-        string += "(defrule\n"
-        string += conditions1[0].replace("AlphaMorphValue",alphavalues1[0]) +"\n"
-        string += conditions1[1].replace("AlphaMorphValue",alphavalues1[1]) +"\n"
-        string += conditions1[2].replace("AlphaMorphValue",alphavalues1[2]) +"\n"
-        string += "\n=>\n"
-        string += actions1[0].replace("AlphaMorphValue",alphavalues1[3]) +"\n"
-        string += actions1[1].replace("AlphaMorphValue",alphavalues1[4]) +"\n"
-        string += actions1[2].replace("AlphaMorphValue",alphavalues1[5]) +"\n"
-        string += "\n)\n\n"
-
-    return string
+    return list2
 
 def mutate_constants(list):
 
@@ -194,6 +132,18 @@ def mutate_constants(list):
 
     return list2
 
+def write_rules(list):
+    string = ""
+
+    for i in range(len(list)):
+        string += "(defrule\n"
+        string += list[i][0].replace("AlphaMorphValue",list[i][1])
+        string += "\n=>\n"
+        string += list[i][2].replace("AlphaMorphValue",list[i][3])
+        string += "\n)\n\n"
+
+    return string
+
 def write_ai(list, rules, name):
 
     constant_write = ""
@@ -207,20 +157,17 @@ def write_ai(list, rules, name):
     f.write(write_rules(rules))
     f.close()
 
-def run_vs(genesParent, rulesParent):
+def vs_run():
     time.sleep(1)
-    #genesParent = generate_constants()
-    #rulesParent = generate_rules(1000)
+    genesParent = generate()
     best = 0
     while True:
         try:
 
             #alphaDNA = genesParent.copy()
-            alphaDNA = mutate_constants(genesParent).copy()
-            alphaRules = mutate_rules(rulesParent).copy()
-
-            write_ai(alphaDNA, alphaRules, "Alpha")
-            write_ai(genesParent, rulesParent, "Beta")
+            alphaDNA = mutate(genesParent)
+            write_ai(alphaDNA, "Alpha")
+            write_ai(genesParent, "Beta")
 
             start_game()
             timed_out = end_game()
@@ -250,29 +197,26 @@ def run_vs(genesParent, rulesParent):
             #reads score from screen
             military = pyautogui.screenshot(region=(832,290,100,50))
             eco = pyautogui.screenshot("try.png",region=(940,290,100,50))
-            eco_score = clean(pytesseract.image_to_string(eco)) ** .5
-            military_score = clean(pytesseract.image_to_string(military)) ** .5
+            eco_score = clean(pytesseract.image_to_string(eco))
+            military_score = clean(pytesseract.image_to_string(military))
             alpha_score = military_score + eco_score + beta_bonus
 
             military = pyautogui.screenshot(region=(832,337,100,50))
             eco = pyautogui.screenshot(region=(940,337,100,50))
-            eco_score = clean(pytesseract.image_to_string(eco)) ** .5
-            military_score =  clean(pytesseract.image_to_string(military)) ** .5
+            eco_score = clean(pytesseract.image_to_string(eco))
+            military_score = clean(pytesseract.image_to_string(military))
             beta_score = military_score + eco_score + alpha_bonus
 
             if beta_score > alpha_score:
                 winner = betaDNA
-                winnerRules = rulesParent
                 print("beta won by score: " + str(beta_score))
 
             else:
                 winner = alphaDNA
-                winnerRules = alphaRules
                 print("alpha won by score: " + str(alpha_score))
 
             genesParent = winner.copy()
-            rulesParent = winnerRules.copy()
-            write_ai(winner,winnerRules, "best")
+            write_ai(winner, "best")
 
             #if score > best:
             #    best = score
@@ -285,17 +229,15 @@ def run_vs(genesParent, rulesParent):
 
 def run_score():
     time.sleep(1)
-    genesParent = generate_constants()
-    rulesParent = generate_rules(500)
+    genesParent = generate()
     best = 0
-    while best < 40:
+    while best < 1000:
 
         try:
 
             #alphaDNA = genesParent.copy()
-            alphaDNA = mutate_constants(genesParent).copy()
-            alphaRules = mutate_rules(rulesParent).copy()
-            write_ai(alphaDNA, alphaRules, "Alpha")
+            alphaDNA = mutate(genesParent)
+            write_ai(alphaDNA, "Alpha")
 
             start_game()
             timed_out = end_game()
@@ -305,23 +247,26 @@ def run_score():
             #reads score from screen
             military = pyautogui.screenshot(region=(832,337,100,50))
             eco = pyautogui.screenshot(region=(940,337,100,50))
-            eco_score = clean(pytesseract.image_to_string(eco)) ** .5
-            military_score =  clean(pytesseract.image_to_string(military)) ** .5
+            eco_score = clean(pytesseract.image_to_string(eco))
+            military_score = clean(pytesseract.image_to_string(military))
             score = military_score + eco_score
 
             if score > best:
                 best = score
-                print("new best: " + str(eco_score **2 + military_score **2))
-                write_ai(alphaDNA, alphaRules,"Best")
+                print("new best: " + str(score))
+                write_ai(alphaDNA, "Best")
                 genesParent = alphaDNA.copy()
-                rulesParent = alphaRules.copy()
 
         except KeyboardInterrupt:
             input("enter anything to continue...")
 
-    return genesParent, rulesParent
+rules = generate_rules(1000)
 
+rules = mutate_rules(rules)
 
-genesParent, rulesParent = run_score()
-input("1000 score achieved; enter to continue")
-run_vs(genesParent, rulesParent)
+constants = generate_constants()
+write_ai(constants, rules, "test")
+
+#run_score()
+#input("1000 score achieved; enter to continue")
+#run_vs()
