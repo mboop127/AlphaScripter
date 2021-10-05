@@ -155,11 +155,16 @@ def mutate_rules(list):
     return rules1
 
 def score_grab(y, bonus):
+
     military = pyautogui.screenshot(region=(832,y,100,50))
-    eco = pyautogui.screenshot("try.png",region=(940,y,100,50))
-    eco_score = clean(pytesseract.image_to_string(eco)) ** .5
-    military_score = clean(pytesseract.image_to_string(military)) ** .5
-    tscore = military_score + eco_score + bonus
+    eco = pyautogui.screenshot(region=(940,y,100,50))
+    society = pyautogui.screenshot(region=(1137,y,100,50))
+
+    eco_score = clean(pytesseract.image_to_string(eco))# ** .5
+    military_score = clean(pytesseract.image_to_string(military))# ** .5
+    society_score = clean(pytesseract.image_to_string(society))# ** .
+
+    tscore = military_score + eco_score + society_score + bonus
 
     return tscore
 
