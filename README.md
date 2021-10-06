@@ -21,3 +21,18 @@ The png files are necessary for the auto-load new game function.
 
 I will expand this later -- if you would like to help with this project, you can find me on the AI scripters discord for aoe2 de and dm me.
 I specifically need help from those knowledgeable about scripting, and especially from anyone willing to write me a resign script I can put in to check whether the generated AIs should resign (this will speed up training significantly).
+
+Run types:
+You can run vs, run score, or run FFA.
+
+run vs:
+load alpha into p1 and beta into p2.
+Game will pick winner as new parent - this is a good adversarial AI but is best for late stage training once the AI is good enough to possibly defeat another player
+
+run score:
+load training AI (HD, barbarian, extreme) into p1 and alpha into p2
+Game will pick all-time-highest scorers as new parent.
+
+run FFA:
+load alpha-h into slots 1-8, make sure no teams are selected
+Game will pick two best in each round and crossover their traits. Very good for fast training early on.
