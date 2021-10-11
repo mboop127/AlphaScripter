@@ -2,15 +2,20 @@
 Genetic algorithm which evolves aoe2 DE ai scripts
 
 Dependencies:
-opencv - https://docs.opencv.org/master/d6/d00/tutorial_py_root.html
-pytesseract - https://pypi.org/project/pytesseract/
-pyautogui - https://pyautogui.readthedocs.io/en/latest/
-pydirectinput - https://pypi.org/project/PyDirectInput/
+- opencv - https://docs.opencv.org/master/d6/d00/tutorial_py_root.html (package is called `opencv-python`)
+- pytesseract - https://pypi.org/project/pytesseract/
+- pyautogui - https://pyautogui.readthedocs.io/en/latest/
+- pydirectinput - https://pypi.org/project/PyDirectInput/
 
-Guide:
-Place all files in the aoe2 de ai directory
+### How to install
+1. Install Python (tested with version 3.9), the dependencies listed above
+2. Install Age of Empires 2 : Definitive Edition (Steam Edition).
+3. Open the Python file `AlphaScripter.XX.py`. Change the value of the variable `installation_folder_path` to your
+specific installtion folder path. If you use the default installtion path on your `C:` drive, you can ignore this step. 
+4. Run the script.
 
-On run, the script will generate an AI named "alpha," load it into a game versus the training ai (Alpha *must* be in the second slot).
+### What does it do?
+On run, the script will generate an AI named "Alpha," load it into a game versus the training ai (Alpha *must* be in the second slot).
 The script will automatically start new games from the post game menu -- you may want to speed up the game in the first round, and/or end the first round early as it won't count for scoring.
 
 Your game may crash. If it does, you can pause the script with control-v and reset. It will save the progress.
