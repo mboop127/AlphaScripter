@@ -106,7 +106,7 @@ def end_crash():
 
 
 def clear_ais():
-    global ai_path
+    global ai_path, ai_names
 
     hd_ai_path = ai_path + "\\HD.per"
     if os.path.isfile(hd_ai_path):
@@ -118,15 +118,8 @@ def clear_ais():
                         f" or the 'AI (HD version).per' file needs to be duplicated and the duplicate renamed to "
                         f"'HD.per'.")
 
-    clear_ai("Alpha", hd_ai_contents)
-    clear_ai("Beta", hd_ai_contents)
-    clear_ai("c", hd_ai_contents)
-    clear_ai("d", hd_ai_contents)
-    clear_ai("e", hd_ai_contents)
-    clear_ai("f", hd_ai_contents)
-    clear_ai("g", hd_ai_contents)
-    clear_ai("h", hd_ai_contents)
-
+    for ai_name in ai_names:
+        clear_ai(name=ai_name, clear_value=hd_ai_contents)
 
 def clear_ai(name: str, clear_value: str = ""):
     """Clear a single AI file."""
