@@ -822,4 +822,3 @@
 	(up-modify-sn teambalance c:= AlphaMorphValue )
 	(up-request-hunters c: AlphaMorphValue )
 	(up-set-placement-data my-player-number -1 c: AlphaMorphValue )
-	
