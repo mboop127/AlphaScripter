@@ -146,8 +146,10 @@ def reset_game(image):
     print("reset")
 
     if launch_through_steam:
+        print("Launching the game through Steam...")
         os.startfile(steam_launch_url)
     else:
+        print(f"Launching the game using path to executable '{executable_path}'...")
         subprocess.Popen(executable_path)
         find_button("launch_okay.png")
 
