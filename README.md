@@ -12,7 +12,9 @@ Dependencies:
 2. Install Age of Empires 2 : Definitive Edition (Steam Edition).
 3. Open the Python file `AlphaScripter.XX.py`. Change the value of the variable `installation_folder_path` to your
 specific installtion folder path. If you use the default installtion path on your `C:` drive, you can ignore this step. 
-4. Run the script.
+4. (Optional) Launch Steam. - The script can also launch the problem 'raw' (i.e. directly from the .exe file) but this
+is not recommended. If you want this anyway, change the parameter `launch_through_steam` to `False`.
+5. Run the script.
 
 ### What does it do?
 On run, the script will generate an AI named "Alpha," load it into a game versus the training ai (Alpha *must* be in the second slot).

@@ -23,6 +23,9 @@ installation_folder_path_fallback = "C:\\Program Files (x86)\\Steam\\steamapps\\
 executable_path = "AoE2DE_s.exe"
 ai_path = "resources\\_common\\ai"
 
+launch_through_steam = True
+steam_launch_url = "steam://rungameid/813780"  # The persistent steam URL to launch the game. DO NOT MODIFY!
+
 # alphabet = 'abcdefghijklmnopqrstuvwxyz'
 # temp = []
 # alphavalues = []
@@ -121,6 +124,7 @@ def clear_ais():
     for ai_name in ai_names:
         clear_ai(name=ai_name, clear_value=hd_ai_contents)
 
+
 def clear_ai(name: str, clear_value: str = ""):
     """Clear a single AI file."""
     global ai_path
@@ -140,8 +144,13 @@ def reset_game(image):
     fail = True
 
     print("reset")
-    subprocess.Popen(executable_path)
-    find_button("launch_okay.png")
+
+    if launch_through_steam:
+        os.startfile(steam_launch_url)
+    else:
+        subprocess.Popen(executable_path)
+        find_button("launch_okay.png")
+
     find_button("single_player.png")
     find_button("skirmish.png")
 
