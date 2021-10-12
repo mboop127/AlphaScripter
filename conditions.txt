@@ -1,4 +1,3 @@
-		
 	(building-available blacksmith)
 	(building-available castle)
 	(building-available feitoria)
