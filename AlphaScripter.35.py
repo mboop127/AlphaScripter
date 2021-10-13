@@ -24,6 +24,11 @@ executable_path = "AoE2DE_s.exe"
 ai_path = "resources\\_common\\ai"
 generated = False
 
+#controls for algorithm
+fails_before_reset = 20
+script_rule_count = 300
+mutation_chance = .05
+
 # alphabet = 'abcdefghijklmnopqrstuvwxyz'
 # temp = []
 # alphavalues = []
@@ -54,8 +59,6 @@ alphavalues = ['aa', 'ab', 'ac', 'ad', 'ae', 'af', 'ag', 'ah', 'ai', 'aj', 'ak',
                'ld', 'le', 'lf', 'lg', 'lh', 'li', 'lj', 'lk', 'll', 'lm', 'ln']
 
 ai_names = ['Alpha', 'Beta', 'c', 'd', 'e', 'f', 'g', 'h']
-
-mutation_chance = .05
 
 # read pre parsed actions
 f = open("actions.txt", "r")
@@ -1003,12 +1006,12 @@ def run_ffa(genesParent, rulesParent):
             save_ai(winnerRules, winner, "best")
 
             #restarts after 10 fails
-            if fails > 10:
+            if fails > fails_before_reset:
                 write_ai(winner, winnerRules, str(max(score_list)), to_ai_folder=False)
                 save_ai(winnerRules, winner, str(max(score_list)))
                 fails = 0
                 generation = 0
-                rulesParent, genesParent = generate_script(300)
+                rulesParent, genesParent = generate_script(script_rule_count)
 
         except KeyboardInterrupt:
             input("enter anything to continue...")
@@ -1016,7 +1019,7 @@ def run_ffa(genesParent, rulesParent):
 
 check_installation_directory()
 
-rulesParent, genesParent = generate_script(300)
+rulesParent, genesParent = generate_script(script_rule_count)
 #rulesParent, genesParent = read_best()
 
 # run_vs(genesParent, rulesParent)
