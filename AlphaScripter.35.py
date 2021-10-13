@@ -22,9 +22,7 @@ installation_folder_path_fallback = "C:\\Program Files (x86)\\Steam\\steamapps\\
 # The paths to the actual executable and of the AI folder.
 executable_path = "AoE2DE_s.exe"
 ai_path = "resources\\_common\\ai"
-
-launch_through_steam = True
-steam_launch_url = "steam://rungameid/813780"  # The persistent steam URL to launch the game. DO NOT MODIFY!
+generated = False
 
 # alphabet = 'abcdefghijklmnopqrstuvwxyz'
 # temp = []
@@ -109,7 +107,7 @@ def end_crash():
 
 
 def clear_ais():
-    global ai_path, ai_names
+    global ai_path
 
     hd_ai_path = ai_path + "\\HD.per"
     if os.path.isfile(hd_ai_path):
@@ -121,8 +119,14 @@ def clear_ais():
                         f" or the 'AI (HD version).per' file needs to be duplicated and the duplicate renamed to "
                         f"'HD.per'.")
 
-    for ai_name in ai_names:
-        clear_ai(name=ai_name, clear_value=hd_ai_contents)
+    clear_ai("Alpha", hd_ai_contents)
+    clear_ai("Beta", hd_ai_contents)
+    clear_ai("c", hd_ai_contents)
+    clear_ai("d", hd_ai_contents)
+    clear_ai("e", hd_ai_contents)
+    clear_ai("f", hd_ai_contents)
+    clear_ai("g", hd_ai_contents)
+    clear_ai("h", hd_ai_contents)
 
 
 def clear_ai(name: str, clear_value: str = ""):
@@ -144,15 +148,8 @@ def reset_game(image):
     fail = True
 
     print("reset")
-
-    if launch_through_steam:
-        print("Launching the game through Steam...")
-        os.startfile(steam_launch_url)
-    else:
-        print(f"Launching the game using path to executable '{executable_path}'...")
-        subprocess.Popen(executable_path)
-        find_button("launch_okay.png")
-
+    subprocess.Popen(executable_path)
+    find_button("launch_okay.png")
     find_button("single_player.png")
     find_button("skirmish.png")
 
@@ -486,17 +483,17 @@ def score_grab(y, bonus):
     eco = pyautogui.screenshot(region=(940, y, 100, 50))
     society = pyautogui.screenshot("try.png", region=(1132, y, 100, 50))
 
-    eco_score = clean(pytesseract.image_to_string(eco)) ** .7
-    military_score = clean(pytesseract.image_to_string(military)) ** .7
-    society_score = clean(pytesseract.image_to_string(society)) ** .7
+    eco_score = clean(pytesseract.image_to_string(eco)) #** .7
+    military_score = clean(pytesseract.image_to_string(military)) #** .7
+    society_score = clean(pytesseract.image_to_string(society)) #** .7
 
     tscore = military_score + eco_score + society_score + bonus
 
     return tscore
 
 
-def save_ai(rules, alphavalues):
-    f = open("best.txt", "w+")
+def save_ai(rules, alphavalues, name):
+    f = open(name + ".txt", "w+")
     for i in range(len(rules)):
         conditions1 = rules[i][0].copy()
         actions1 = rules[i][1].copy()
@@ -597,6 +594,12 @@ def write_ai(list, rules, name: str, to_ai_folder: bool = True):
         ai_file.write(write_rules(rules))
         ai_file.write("\n\n\n")
 
+def generate_script(length):
+    genesParent = generate_constants()
+    rulesParent = generate_rules(length)
+    generated = True
+
+    return rulesParent, genesParent
 
 def run_vs(genesParent, rulesParent):
     global mutation_chance
@@ -677,7 +680,7 @@ def run_vs(genesParent, rulesParent):
             genesParent = winner.copy()
             rulesParent = winnerRules.copy()
             write_ai(winner, winnerRules, "best")
-            save_ai(winnerRules, winner)
+            save_ai(winnerRules, winner, "best")
 
             # if score > best:
             #    best = score
@@ -737,7 +740,7 @@ def run_score(genesParent, rulesParent):
                 best = score
                 print("new best: " + str(score))
                 write_ai(alphaDNA, alphaRules, "Best")
-                save_ai(alphaRules, alphaDNA)
+                save_ai(alphaRules, alphaDNA, "Best")
                 second_place = genesParent.copy()
                 second_placeRules = rulesParent.copy()
                 genesParent = alphaDNA.copy()
@@ -764,9 +767,13 @@ def run_ffa(genesParent, rulesParent):
     second_place = genesParent.copy()
 
     best = 0
+    generation = 0
     fails = 0
 
     while True:
+
+        generation += 1
+
         try:
 
             # refector later
@@ -815,13 +822,18 @@ def run_ffa(genesParent, rulesParent):
             timed_out = end_game()
 
             while timed_out == "crash":
+
                 end_crash()
                 timed_out = reset_game("alpha.png")
+
                 if timed_out != "crash":
                     start_game("alpha.png")
                     timed_out = end_game()
 
                 else:
+                    if generation == 1:
+                        rulesParent, genesParent = generate_script(300)
+
                     crossed_rules, crossed_genes = crossover(rulesParent, second_placeRules, genesParent, second_place)
                     alphaDNA = mutate_constants(crossed_genes)
                     alphaRules = mutate_rules(crossed_rules)
@@ -988,7 +1000,15 @@ def run_ffa(genesParent, rulesParent):
             genesParent = winner.copy()
             rulesParent = winnerRules.copy()
             write_ai(winner, winnerRules, "best", to_ai_folder=False)
-            save_ai(winnerRules, winner)
+            save_ai(winnerRules, winner, "best")
+
+            #restarts after 10 fails
+            if fails > 10:
+                write_ai(winner, winnerRules, str(max(score_list)), to_ai_folder=False)
+                save_ai(winnerRules, winner, str(max(score_list)))
+                fails = 0
+                generation = 0
+                rulesParent, genesParent = generate_script(300)
 
         except KeyboardInterrupt:
             input("enter anything to continue...")
@@ -996,10 +1016,8 @@ def run_ffa(genesParent, rulesParent):
 
 check_installation_directory()
 
-genesParent = generate_constants()
-rulesParent = generate_rules(300)
-
-# rulesParent, genesParent = read_best()
+rulesParent, genesParent = generate_script(300)
+#rulesParent, genesParent = read_best()
 
 # run_vs(genesParent, rulesParent)
 # run_score(genesParent, rulesParent)
