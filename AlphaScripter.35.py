@@ -598,6 +598,7 @@ def write_ai(list, rules, name: str, to_ai_folder: bool = True):
         ai_file.write("\n\n\n")
 
 def generate_script(length):
+    print("generating new script")
     genesParent = generate_constants()
     rulesParent = generate_rules(length)
     generated = True
@@ -834,7 +835,7 @@ def run_ffa(genesParent, rulesParent):
                     timed_out = end_game()
 
                 else:
-                    if generation == 1:
+                    if generation == 1 and generated:
                         rulesParent, genesParent = generate_script(300)
 
                     crossed_rules, crossed_genes = crossover(rulesParent, second_placeRules, genesParent, second_place)
@@ -1007,6 +1008,7 @@ def run_ffa(genesParent, rulesParent):
 
             #restarts after 10 fails
             if fails > fails_before_reset:
+                print("fail threshold exceeded, reseting...")
                 write_ai(winner, winnerRules, str(max(score_list)), to_ai_folder=False)
                 save_ai(winnerRules, winner, str(max(score_list)))
                 fails = 0
@@ -1019,8 +1021,8 @@ def run_ffa(genesParent, rulesParent):
 
 check_installation_directory()
 
-rulesParent, genesParent = generate_script(script_rule_count)
-#rulesParent, genesParent = read_best()
+#rulesParent, genesParent = generate_script(script_rule_count)
+rulesParent, genesParent = read_best()
 
 # run_vs(genesParent, rulesParent)
 # run_score(genesParent, rulesParent)
