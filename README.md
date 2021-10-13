@@ -27,7 +27,7 @@ The best script so far will be saved as "best.per" in the .ai directory. It will
 The png files are necessary for the auto-load new game function.
 
 I will expand this later -- if you would like to help with this project, you can find me on the AI scripters discord for aoe2 de and dm me.
-I specifically need help from those knowledgeable about scripting, and especially from anyone willing to write me a resign script I can put in to check whether the generated AIs should resign (this will speed up training significantly).
+I specifically need help from those knowledgeable about scripting or engine modification.
 
 Run types:
 You can run vs, run score, or run FFA.
