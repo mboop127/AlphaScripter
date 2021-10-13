@@ -22,7 +22,6 @@ installation_folder_path_fallback = "C:\\Program Files (x86)\\Steam\\steamapps\\
 # The paths to the actual executable and of the AI folder.
 executable_path = "AoE2DE_s.exe"
 ai_path = "resources\\_common\\ai"
-generated = False
 
 #controls for algorithm
 fails_before_reset = 20
@@ -619,10 +618,10 @@ def write_ai(list, rules, name: str, to_ai_folder: bool = True):
         ai_file.write("\n\n\n")
 
 def generate_script(length):
+
     print("generating new script")
     genesParent = generate_constants()
     rulesParent = generate_rules(length)
-    generated = True
 
     return rulesParent, genesParent
 
@@ -778,9 +777,8 @@ def run_score(genesParent, rulesParent):
             input("enter anything to continue...")
 
 
-def run_ffa(genesParent, rulesParent):
+def run_ffa(genesParent, rulesParent, load):
     global mutation_chance
-
     check = "crash"
 
     clear_ais()
@@ -792,7 +790,10 @@ def run_ffa(genesParent, rulesParent):
     second_place = genesParent.copy()
 
     best = 0
-    generation = 0
+    if load == "load":
+        generation = 1
+    else:
+        generation = 0
     fails = 0
 
     while True:
@@ -856,8 +857,8 @@ def run_ffa(genesParent, rulesParent):
                     timed_out = end_game()
 
                 else:
-                    if generation == 1 and generated:
-                        rulesParent, genesParent = generate_script(300)
+                    if generation == 1:
+                        rulesParent, genesParent = generate_script(script_rule_count)
 
                     crossed_rules, crossed_genes = crossover(rulesParent, second_placeRules, genesParent, second_place)
                     alphaDNA = mutate_constants(crossed_genes)
@@ -1047,4 +1048,4 @@ rulesParent, genesParent = generate_script(script_rule_count)
 
 # run_vs(genesParent, rulesParent)
 # run_score(genesParent, rulesParent)
-run_ffa(genesParent, rulesParent)
+run_ffa(genesParent, rulesParent, "no")
