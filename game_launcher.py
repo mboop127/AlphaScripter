@@ -5,9 +5,6 @@ import subprocess
 from ctypes import windll
 import msgpackrpc
 
-time_limit = 10
-map = "Arabia"
-
 civs = {
     "britons": 1,
     "franks": 2,
@@ -32,6 +29,7 @@ civs = {
 
 
 def is_responding(PID):
+    return True
     os.system('tasklist /FI "PID eq %d" /FI "STATUS eq running" > tmp.txt' % PID)
     tmp = open('tmp.txt', 'r')
     a = tmp.readlines()
@@ -51,8 +49,9 @@ class Launcher:
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
         self.names = None
         self.autogame = None
+        self.aoc_proc = None
 
-    def launch_game(self, names: list[str], civs: list[int] = None):
+    def launch_game(self, names: list[str], civs: list[int] = None, real_time_limit: int = 0, game_time_limit: int = 0):
         self.names = names
         if names is None or len(names) < 2 or len(names) > 8:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
@@ -68,12 +67,12 @@ class Launcher:
         # for aoc_proc in aoc_procs: aoc_proc.kill()
 
         # launch aoc and wait for it to init
-        aoc_proc = subprocess.Popen(self.executable_path)
+        self.aoc_proc = subprocess.Popen(self.executable_path)
         # to launch the rpc server with another port, it could be launched like this:
         # aoc_proc = subprocess.Popen(aoc_path + " -autogameport 64721")
 
         # write dll path into aoc memory
-        aoc_handle = windll.kernel32.OpenProcess(0x1FFFFF, False, aoc_proc.pid)  # PROCESS_ALL_ACCESS
+        aoc_handle = windll.kernel32.OpenProcess(0x1FFFFF, False, self.aoc_proc.pid)  # PROCESS_ALL_ACCESS
         remote_memory = windll.kernel32.VirtualAllocEx(aoc_handle, 0, 260, 0x3000, 0x40)
         windll.kernel32.WriteProcessMemory(aoc_handle, remote_memory, self.dll_path, len(self.dll_path), 0)
 
@@ -101,19 +100,34 @@ class Launcher:
         # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
         self.autogame.call('StartGame')  # start the match
 
-        t = 0
+        real_time = 0
+        previous_game_time = -1
 
-        while t < time_limit:  # wait until the game has finished
-            if not is_responding(aoc_proc.pid):
+        while True:  # wait until the game has finished
+            # If we are not responding, kill the game
+            if not is_responding(self.aoc_proc.pid):
                 print("Game has crashed.")
-                aoc_proc.kill()
-                self.autogame.close()
-                self.autogame = None
+                self.kill_game()
                 return None
+            # If the game is no longer in progress
             if not self.autogame.call('GetGameInProgress'):
                 break
+
             time.sleep(1.0)
-            t += 1
+
+            current_game_time = int(self.autogame.call('GetGameTime'))
+            if current_game_time <= previous_game_time:
+                print("The game time isn't progressing. The game has probably crashed.")
+                self.kill_game()
+                return None
+
+            previous_game_time = current_game_time
+            real_time += 1
+
+            # If we are over our real time limit or game time limit
+            if (0 < real_time_limit < real_time) or (0 < game_time_limit < current_game_time):
+                break
+
 
         scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
         self.autogame.call('QuitGame')  # go back to the main menu
@@ -128,6 +142,16 @@ class Launcher:
             return [0] * len(self.names)
         return [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(self.names))]
 
+    def kill_game(self):
+        if self.aoc_proc is not None:
+            self.aoc_proc.kill()
+            self.aoc_proc = None
+        if self.autogame is not None:
+            self.autogame.call("QuitGame")
+            time.sleep(1.0)
+            self.autogame.close()
+            self.autogame = None
+
 
 l = Launcher()
-l.launch_game(["Barbarian"] * 8)
+l.launch_game(["HD"] * 8)
