@@ -3,7 +3,7 @@ import time
 import subprocess
 import os
 import signal
-from collections import OrderedDict
+from game_launcher import Launcher
 
 # The path to the installation folder. Please change this to your specific installation folder
 installation_folder_path = "E:\\SteamLibrary\\steamapps\\common\\AoE2DE"
@@ -112,7 +112,7 @@ def clear_ais():
                         f"'HD.per'.")
 
     for i in range(len(ai_names)):
-        clear_ai(ai_names[i]), hd_ai_contents)
+        clear_ai(ai_names[i], hd_ai_contents)
 
 
 def clear_ai(name: str, clear_value: str = ""):
@@ -432,8 +432,9 @@ def run_ffa(genesParent, rulesParent):
 
         try:
 
-            # refector later
-            # alphaDNA = genesParent.copy()
+            alphaDNA = genesParent.copy()
+            alphaRules = rulesParent.copy()
+
             crossed_rules, crossed_genes = crossover(rulesParent, second_placeRules, genesParent, second_place)
             betaDNA = mutate_constants(crossed_genes)
             betaRules = mutate_rules(crossed_rules)
@@ -474,10 +475,18 @@ def run_ffa(genesParent, rulesParent):
             write_ai(gDNA, gRules, "g")
             write_ai(hDNA, hRules, "h")
 
-            # reads score from screen
+            # reads score
+            l = Launcher()
+            score_list = l.launch_game(ai_names, real_time_limit = 10)
 
-
-            score_list = [parent_score, b_score, c_score, d_score, e_score, f_score, g_score, h_score]
+            parent_score = score_list[0]
+            b_score = score_list[1]
+            c_score = score_list[2]
+            d_score = score_list[3]
+            e_score = score_list[4]
+            f_score = score_list[5]
+            g_score = score_list[6]
+            h_score = score_list[7]
 
             score_list = sorted(score_list, reverse=True)
 
