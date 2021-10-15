@@ -114,8 +114,11 @@ class Launcher:
                 break
 
             time.sleep(1.0)
+            try:
+                current_game_time = int(self.autogame.call('GetGameTime'))
+            except:
+                break
 
-            current_game_time = int(self.autogame.call('GetGameTime'))
             if current_game_time <= previous_game_time:
                 print("The game time isn't progressing. The game has probably crashed.")
                 self.kill_game()
@@ -128,12 +131,15 @@ class Launcher:
             if (0 < real_time_limit < real_time) or (0 < game_time_limit < current_game_time):
                 break
 
-        scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
-        self.autogame.call('QuitGame')  # go back to the main menu
-        self.autogame.close()
-        self.autogame = None
-        # print(scores)
-        return scores
+        try:
+            scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
+            self.autogame.call('QuitGame')  # go back to the main menu
+            self.autogame.close()
+            self.autogame = None
+            # print(scores)
+            return scores
+        except:
+            return None
 
     def get_scores(self) -> list[int]:
         if self.autogame is None or not self.autogame.call('GetGameInProgress'):
