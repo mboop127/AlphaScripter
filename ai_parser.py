@@ -308,4 +308,4 @@ class AI:
 
 ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
 example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
-names = {"Alpha", "Beta", "c", "d", "e", "f", "g"}
+names = {"parent", "a", "b", "c", "d", "e", "f"}
