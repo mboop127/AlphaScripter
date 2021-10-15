@@ -1,6 +1,7 @@
 import os
 import re
 import pickle
+import timeit
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -90,9 +91,9 @@ def inside_outer_parentheses(string: str):
 
 # =========================================
 
-
 class AIParser:
-    def read_single(self, path: str, raise_exception: bool = True):
+    @staticmethod
+    def read_single(path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per", raise_exception: bool = True):
         """
         Read a single .per file and return the AI.
 
@@ -110,7 +111,8 @@ class AIParser:
             raise Exception(f"Cannot read from {path}. No file found at that path.")
         return None
 
-    def read_multiple(self, path: str, names: set[str] = None, as_dict: bool = True):
+    @staticmethod
+    def read_multiple(path: str, names: set[str] = None, as_dict: bool = True):
         """
         Read multiple AI .per files in a directory and return a list containing the found AI's.
 
@@ -129,7 +131,7 @@ class AIParser:
             name = file.removesuffix(".per")
             if names and name not in names:
                 continue
-            ai = self.read_single(os.path.join(path, file), raise_exception=False)
+            ai = AIParser.read_single(os.path.join(path, file), raise_exception=False)
             if ai:
                 if as_dict:
                     result[name] = ai
@@ -304,9 +306,6 @@ class AI:
         return result
 
 
-parser = AIParser()
 ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
 example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
 names = {"Alpha", "Beta", "c", "d", "e", "f", "g"}
-Alpha = parser.read_single(example_path)
-x = 0
