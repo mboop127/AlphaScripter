@@ -1,8 +1,8 @@
 import os
-import time
-import psutil
 import subprocess
+import time
 from ctypes import windll
+
 import msgpackrpc
 
 civs = {
@@ -128,7 +128,6 @@ class Launcher:
             if (0 < real_time_limit < real_time) or (0 < game_time_limit < current_game_time):
                 break
 
-
         scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
         self.autogame.call('QuitGame')  # go back to the main menu
         self.autogame.close()
@@ -154,4 +153,4 @@ class Launcher:
 
 
 l = Launcher()
-l.launch_game(["HD"] * 8)
+l.launch_game(["HD"] * 8, real_time_limit=10)
