@@ -1,7 +1,6 @@
-import enum
 import os
 import re
-from typing import Union
+import pickle
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -91,55 +90,75 @@ def inside_outer_parentheses(string: str):
 
 # =========================================
 
-class Rule:
-    def __init__(self):
-        self.facts = []
-        self.actions = []
-
-    def __str__(self):
-        string = "(defrule\n"
-        for fact in self.facts:
-            string += str(fact) + "\n"
-        string += "=>\n"
-        x = 0
-        # for action in self.actions:
-
-
-operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
-
 
 class AIParser:
-    def __init__(self, path: str, names: set[str] = None):
-        self.path = path  # The path to the folder where the AIs are stored
-        self.found_ais = self._find_all_ais(names)  # A dict with as key names of AIs and as value the AIs themselves
-        self.x = 0
+    def read_single(self, path: str, raise_exception: bool = True):
+        """
+        Read a single .per file and return the AI.
 
-    def _find_all_ais(self, specific_names) -> dict:
-        dir_exists(self.path, raise_exception=True)
-        result = dict()
-        for file in os.listdir(self.path):
-            if file.endswith(".per"):
-                name = file.removesuffix(".per")
-                if specific_names is None or name in specific_names:
-                    full_path = os.path.join(self.path, file)
-                    visible = os.path.isfile(os.path.join(self.path, (name + ".ai")))
-                    print(f"AI .per file found at {full_path}")
-                    result[name] = AI(name=name, path=full_path, ai_folder=self.path, visible=visible)
+        :param path: The path to the .per file.
+        :param raise_exception: Whether to raise Exceptions.
+        :return: An instance of the AI class if found, else None.
+        """
+
+        if os.path.isfile(path):
+            if path.endswith(".per"):
+                return AI(path=path)
+            elif raise_exception:
+                raise Exception(f"Cannot read from {path}. The file is not a .per file.")
+        elif raise_exception:
+            raise Exception(f"Cannot read from {path}. No file found at that path.")
+        return None
+
+    def read_multiple(self, path: str, names: set[str] = None, as_dict: bool = True):
+        """
+        Read multiple AI .per files in a directory and return a list containing the found AI's.
+
+        :param path: The path to the directory containing the .per files.
+        :param names: An optional set of names that will act as a filter when reading AIs.
+        :param as_dict: Whether to return the result as a dictionary. If False, returns the AI's in a list instead.
+        :return: A dict (keys are AI names) or list containing all the AIs, depending on the value of 'as_dict'.
+        """
+
+        if not os.path.isdir(path):
+            raise Exception(f"The path {path} does not exist or is not a directory.")
+
+        result = dict() if as_dict else []
+        found = set()
+        for file in os.listdir(path):
+            name = file.removesuffix(".per")
+            if names and name not in names:
+                continue
+            ai = self.read_single(os.path.join(path, file), raise_exception=False)
+            if ai:
+                if as_dict:
+                    result[name] = ai
+                else:
+                    result.append(ai)
+                found.add(name)
+
+        if len(found) != len(names):
+            print(f"We did not find all the AI's you were looking for: \n Query={names} \n Found={found}.")
+
         return result
 
 
 class AI:
-    def __init__(self, name, path, ai_folder, visible=False):
-        self.name = name  # The name of the AI
+    def __init__(self, path):
         self.path = path  # The path to the AI .per file
-        self.visible = visible  # Whether this AI is visible in the selection dropdown in-game
+        # The directory in which this AI's .per file is located & The name of this AI.
+        self.parent_directory, self.name = os.path.split(path)
+        self.name = self.name.removesuffix(".per")
+        # Whether this AI is visible in the selection dropdown in-game
+        self.visible = os.path.isfile(os.path.join(self.parent_directory, (self.name + ".ai")))
         self.raw_content = read_file_raw(path)
         self.simple_indicator = '*'
         self.complex_indicator = '%'
+        self.operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
 
-        self.constants, self.rules = self._parse_raw_content(content=self.raw_content, ai_folder=ai_folder)
+        self.constants, self.rules = self._parse_raw_content(content=self.raw_content)
 
-    def _parse_raw_content(self, content, ai_folder):
+    def _parse_raw_content(self, content):
         constants = dict()
         current_rule_lines = None
         rules = []
@@ -167,8 +186,8 @@ class AI:
 
             elif line.startswith("(load"):  # We need to load a different file as well!
                 extra_file = line.split(' "')[1].removesuffix('")').strip()
-                loaded_raw_content = read_file_raw(ai_folder + "\\" + extra_file + ".per")
-                loaded, _ = self._parse_raw_content(loaded_raw_content, ai_folder=ai_folder)
+                loaded_raw_content = read_file_raw(os.path.join(self.parent_directory, (extra_file + ".per")))
+                loaded, _ = self._parse_raw_content(loaded_raw_content)
                 constants.update(loaded)
 
                 if current_rule_lines is not None:
@@ -208,11 +227,12 @@ class AI:
         fact_lines = lines[:splitter_index]
         facts = self._lines_to_facts(fact_lines)
         # TODO parse actions correctly
-        action_lines = lines[splitter_index+1:]
+        action_lines = lines[splitter_index + 1:]
         actions = self._lines_to_actions(action_lines)
         return facts, actions
 
-    def _lines_to_actions(self, lines: list[str]):
+    @staticmethod
+    def _lines_to_actions(lines: list[str]):
         actions = []
         for line in lines:
             line = re.sub(r"[\s\t\n\r]*\([\s\t\n\r]*", "", line)  # Remove all irrelevant whitespace
@@ -227,7 +247,7 @@ class AI:
         string = re.sub(r"[\s\t\n\r]*\)[\s\t\n\r]*", ")", string)  # Remove all irrelevant whitespace
 
         # Replace all operator keywords for symbols
-        for operator, value in operators.items():
+        for operator, value in self.operators.items():
             string = re.sub(r"\(\s*" + operator + r"\s*\(", f"({value}(", string)
 
         simples, string, without_globals = self._extract_simple_facts(string)
@@ -270,21 +290,23 @@ class AI:
             match = re.search(pattern, string)
         return complexes
 
-    @staticmethod
-    def string_to_complex(string: str) -> list:
+    def string_to_complex(self, string: str) -> list:
         string = string.removesuffix(")")
         string = string.removeprefix("(")
         # The operator symbol, followed by the simple/complex indicator and then the index
         end = string.find(")")
         result = [string[0], string[2], int(string[3:end])]
 
-        if string[0] != operators["not"]:
+        if string[0] != self.operators["not"]:
             result.append(string[6])
             result.append(int(string[7]))
 
         return result
 
 
+parser = AIParser()
 ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
+example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
 names = {"Alpha", "Beta", "c", "d", "e", "f", "g"}
-parser = AIParser(path=ai_path, names=names)
+Alpha = parser.read_single(example_path)
+x = 0
