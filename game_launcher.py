@@ -83,10 +83,9 @@ def is_responding(PID):
     else:
         return False
 
-
 class Launcher:
     def __init__(self,
-                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
+                 executable_path: str = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe"):
         self.executable_path = executable_path
         self.directory, self.aoc_name = os.path.split(executable_path)
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
@@ -165,11 +164,7 @@ class Launcher:
         previous_game_time = -1
 
         while True:  # wait until the game has finished
-            # If we are not responding, kill the game
-            if not is_responding(self.aoc_proc.pid):
-                print("Game has crashed.")
-                self.kill_game()
-                return None
+
             # If the game is no longer in progress
             if not self.call_safe('GetGameInProgress'):
                 break
@@ -191,7 +186,7 @@ class Launcher:
 
         scores = [self.call_safe("GetPlayerScore", i + 1) for i in range(len(names))]
         self.quit_game(quit_program=True)
-        print(scores)
+        #print(scores)
         return scores
 
     def get_scores(self) -> list[int]:
@@ -203,7 +198,6 @@ class Launcher:
     def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
-
         :param method: The name of the method to call.
         :param param1: The first parameter for the method.
         :param param2: The second parameter for the method.
@@ -230,7 +224,6 @@ class Launcher:
     def quit_game(self, quit_program: bool = False, force_kill_on_fail: bool = True):
         """
         Quit the game to the main menu.
-
         :param force_kill_on_fail: Whether to force stop the process when quitting to main menu fails.
         :param quit_program: If True, closes the window and quits the program. Else just stays in the main menu.
         """
@@ -268,9 +261,4 @@ class Launcher:
                 self.aoc_proc.kill()
                 self.aoc_proc = None
             except:  # If that fails for whatever reason, terminate the process.
-                p: psutil.Process = psutil.Process(self.aoc_proc.pid)
-                p.terminate()
-
-
-l = Launcher()
-l.launch_game(["Barbarian"] * 8, real_time_limit=10)
+                os.system("taskkill /f /im age2_x1.5.exe")
