@@ -5,19 +5,9 @@ import os
 import signal
 from game_launcher import Launcher
 
-# The path to the installation folder. Please change this to your specific installation folder
-installation_folder_path = "E:\\SteamLibrary\\steamapps\\common\\AoE2DE"
-
-# The installation folder fallback, which is the most standard installation path.
-installation_folder_path_fallback = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\AoE2DE"
-
-# The paths to the actual executable and of the AI folder.
-executable_path = "AoE2DE_s.exe"
-ai_path = "resources\\_common\\ai"
-
 #controls for algorithm
 fails_before_reset = 20
-script_rule_count = 500
+script_rule_count = 300
 mutation_chance = .05
 
 # alphabet = 'abcdefghijklmnopqrstuvwxyz'
@@ -66,68 +56,6 @@ def setup_ai_files():
         f = open(ai_names[i] + ".ai", "w+")
         f.write("")
         f.close()
-
-def check_installation_directory():
-    """This function checks whether the given installation directories exist and are valid."""
-    global installation_folder_path, installation_folder_path_fallback
-
-    if os.path.isdir(installation_folder_path):
-        print(f"Installation folder is valid.")
-    else:
-        print(f"Warning! Custom installation folder '{installation_folder_path}' is invalid."
-              f" Trying to fall back on fallback installation path...")
-
-        if os.path.isdir(installation_folder_path_fallback):
-            installation_folder_path = installation_folder_path_fallback
-        else:
-            print(f"Warning! Fall back installation folder '{installation_folder_path_fallback}' is invalid. "
-                  f"Quitting the program...")
-            quit()
-
-    global executable_path, ai_path
-    executable_path = installation_folder_path + "\\" + executable_path
-    ai_path = installation_folder_path + "\\" + ai_path
-
-    if not os.path.isfile(executable_path):
-        print(f"Warning! Executable not found at location '{executable_path}'."
-              f"Please correct the installation path in the code. Quitting the program...")
-        quit()
-
-    if not os.path.isdir(ai_path):
-        print(f"AI folder not found at location {ai_path}."
-              f"Please correct the installation path in the code. Quitting the program...")
-        quit()
-
-def clear_ais():
-    global ai_path
-
-    hd_ai_path = ai_path + "\\HD.per"
-    if os.path.isfile(hd_ai_path):
-        with open(hd_ai_path, 'r') as hd_ai_file:
-            hd_ai_contents = hd_ai_file.read()
-
-    else:
-        raise Exception(f"Clearing AI's failed. This can have 2 reasons. Either the path '{ai_path}' does not exist"
-                        f" or the 'AI (HD version).per' file needs to be duplicated and the duplicate renamed to "
-                        f"'HD.per'.")
-
-    for i in range(len(ai_names)):
-        clear_ai(ai_names[i], hd_ai_contents)
-
-
-def clear_ai(name: str, clear_value: str = ""):
-    """Clear a single AI file."""
-    global ai_path
-
-    full_path = ai_path + "\\" + name + ".per"
-    ai_file_path = ai_path + "\\" + name + ".ai"
-
-    if not os.path.isfile(full_path) or not os.path.isfile(ai_file_path):
-        print(f"Warning! From AI '{name}' could either the .per or the .ai not be found. These files will be created.")
-        open(ai_file_path, 'x')
-
-    with open(full_path, 'w+') as file:
-        file.write(clear_value)
 
 def crossover(rule1, rule2, alpha1, alpha2):
     global mutation_chance
@@ -397,13 +325,7 @@ def write_ai(list, rules, name: str, to_ai_folder: bool = True):
     for i in range(len(alphavalues)):
         constant_write += "\n(defconst " + alphavalues[i] + " " + str(list[i]) + ")"
 
-    # If we want to write to the AI folder, do that, else just use the project folder.
-    full_path = ai_path + "\\" + name + ".per" if to_ai_folder else name + ".per"
-
-    if not os.path.isfile(full_path):
-        print(f"AI file {full_path} cannot be found for writing. This file will therefore be created.")
-
-    with open(full_path, "w+") as ai_file:
+    with open(name + ".per", "w+") as ai_file:
         ai_file.write(static_code() + "\n\n\n")
         ai_file.write(constant_write)
         ai_file.write("\n\n\n")
@@ -477,126 +399,131 @@ def run_ffa(genesParent, rulesParent):
 
             # reads score
             l = Launcher()
-            score_list = l.launch_game(ai_names, real_time_limit = 10)
+            score_list = l.launch_game(ai_names, real_time_limit = 400, game_time_limit = 3600)
 
-            parent_score = score_list[0]
-            b_score = score_list[1]
-            c_score = score_list[2]
-            d_score = score_list[3]
-            e_score = score_list[4]
-            f_score = score_list[5]
-            g_score = score_list[6]
-            h_score = score_list[7]
+            if score_list == None:
+                if generation == 1:
+                    rulesParent, genesParent = generate_script(script_rule_count)
 
-            score_list = sorted(score_list, reverse=True)
-
-            # checks number of rounds with no improvement and sets annealing
-            if parent_score == max(score_list):
-                fails += 1
-                mutation_chance += fails / 1000
             else:
-                fails = 0
-                mutation_chance = .05
 
-            failed = False
+                parent_score = score_list[0]
+                b_score = score_list[1]
+                c_score = score_list[2]
+                d_score = score_list[3]
+                e_score = score_list[4]
+                f_score = score_list[5]
+                g_score = score_list[6]
+                h_score = score_list[7]
 
-            if parent_score == max(score_list):
-                failed = True
-                winner = genesParent.copy()
-                winnerRules = rulesParent.copy()
-                second_place = genesParent.copy()
-                winnerRules = rulesParent.copy()
-                print("parent won by score: " + str(beta_score))
+                score_list = sorted(score_list, reverse=True)
 
-            elif b_score == max(score_list):
-                winner = betaDNA.copy()
-                winnerRules = betaRules.copy()
-                print("b won by score: " + str(alpha_score))
+                # checks number of rounds with no improvement and sets annealing
+                if parent_score == max(score_list):
+                    fails += 1
+                    mutation_chance += fails / 1000
+                else:
+                    fails = 0
+                    mutation_chance = .05
 
-            elif c_score == max(score_list):
-                winner = cDNA.copy()
-                winnerRules = cRules.copy()
-                print("c won by score: " + str(c_score))
+                failed = False
 
-            elif d_score == max(score_list):
-                winner = dDNA.copy()
-                winnerRules = dRules.copy()
-                print("d won by score: " + str(d_score))
-
-            elif e_score == max(score_list):
-                winner = eDNA.copy()
-                winnerRules = eRules.copy()
-                print("e won by score: " + str(e_score))
-
-            elif f_score == max(score_list):
-                winner = fDNA.copy()
-                winnerRules = fRules.copy()
-                print("f won by score: " + str(f_score))
-
-            elif g_score == max(score_list):
-                winner = gDNA.copy()
-                winnerRules = gRules.copy()
-                print("g won by score: " + str(g_score))
-
-            else:  # h_score == max(score_list):
-                winner = hDNA.copy()
-                winnerRules = hRules.copy()
-                print("h won by score: " + str(h_score))
-
-            # checks if second best for crossover, also gross and needs to be replaced later
-            if not failed:
-
-                if parent_score == score_list[1]:
+                if parent_score == max(score_list):
+                    failed = True
+                    winner = genesParent.copy()
+                    winnerRules = rulesParent.copy()
                     second_place = genesParent.copy()
-                    second_placeRules = rulesParent.copy()
+                    winnerRules = rulesParent.copy()
+                    print("parent won by score: " + str(parent_score))
 
-                elif b_score == score_list[1]:
-                    second_place = betaDNA.copy()
-                    second_placeRules = betaRules.copy()
+                elif b_score == max(score_list):
+                    winner = betaDNA.copy()
+                    winnerRules = betaRules.copy()
+                    print("b won by score: " + str(b_score))
 
-                elif c_score == score_list[1]:
-                    second_place = cDNA.copy()
-                    second_placeRules = cRules.copy()
+                elif c_score == max(score_list):
+                    winner = cDNA.copy()
+                    winnerRules = cRules.copy()
+                    print("c won by score: " + str(c_score))
 
-                elif d_score == score_list[1]:
-                    second_place = dDNA.copy()
-                    second_placeRules = dRules.copy()
+                elif d_score == max(score_list):
+                    winner = dDNA.copy()
+                    winnerRules = dRules.copy()
+                    print("d won by score: " + str(d_score))
 
-                elif e_score == score_list[1]:
-                    second_place = eDNA.copy()
-                    second_placeRules = eRules.copy()
+                elif e_score == max(score_list):
+                    winner = eDNA.copy()
+                    winnerRules = eRules.copy()
+                    print("e won by score: " + str(e_score))
 
-                elif f_score == score_list[1]:
-                    second_place = fDNA.copy()
-                    second_placeRules = fRules.copy()
+                elif f_score == max(score_list):
+                    winner = fDNA.copy()
+                    winnerRules = fRules.copy()
+                    print("f won by score: " + str(f_score))
 
-                elif g_score == score_list[1]:
-                    second_place = gDNA.copy()
-                    second_placeRules = gRules.copy()
+                elif g_score == max(score_list):
+                    winner = gDNA.copy()
+                    winnerRules = gRules.copy()
+                    print("g won by score: " + str(g_score))
 
-                else:  # h_score == score_list[1]:
-                    second_place = hDNA.copy()
-                    second_placeRules = hRules.copy()
+                else:  # h_score == max(score_list):
+                    winner = hDNA.copy()
+                    winnerRules = hRules.copy()
+                    print("h won by score: " + str(h_score))
 
-            genesParent = winner.copy()
-            rulesParent = winnerRules.copy()
-            write_ai(winner, winnerRules, "best", to_ai_folder=False)
-            save_ai(winnerRules, winner, "best")
+                # checks if second best for crossover, also gross and needs to be replaced later
+                if not failed:
 
-            #restarts after 10 fails
-            if fails > fails_before_reset:
-                print("fail threshold exceeded, reseting...")
-                write_ai(winner, winnerRules, str(max(score_list)), to_ai_folder=False)
-                save_ai(winnerRules, winner, str(max(score_list)))
-                fails = 0
-                generation = 0
-                rulesParent, genesParent = generate_script(script_rule_count)
+                    if parent_score == score_list[1]:
+                        second_place = genesParent.copy()
+                        second_placeRules = rulesParent.copy()
+
+                    elif b_score == score_list[1]:
+                        second_place = betaDNA.copy()
+                        second_placeRules = betaRules.copy()
+
+                    elif c_score == score_list[1]:
+                        second_place = cDNA.copy()
+                        second_placeRules = cRules.copy()
+
+                    elif d_score == score_list[1]:
+                        second_place = dDNA.copy()
+                        second_placeRules = dRules.copy()
+
+                    elif e_score == score_list[1]:
+                        second_place = eDNA.copy()
+                        second_placeRules = eRules.copy()
+
+                    elif f_score == score_list[1]:
+                        second_place = fDNA.copy()
+                        second_placeRules = fRules.copy()
+
+                    elif g_score == score_list[1]:
+                        second_place = gDNA.copy()
+                        second_placeRules = gRules.copy()
+
+                    else:  # h_score == score_list[1]:
+                        second_place = hDNA.copy()
+                        second_placeRules = hRules.copy()
+
+                genesParent = winner.copy()
+                rulesParent = winnerRules.copy()
+                write_ai(winner, winnerRules, "best", to_ai_folder=False)
+                save_ai(winnerRules, winner, "best")
+
+                #restarts after 10 fails
+                if fails > fails_before_reset:
+                    print("fail threshold exceeded, reseting...")
+                    write_ai(winner, winnerRules, str(max(score_list)), to_ai_folder=False)
+                    save_ai(winnerRules, winner, str(max(score_list)))
+                    fails = 0
+                    generation = 0
+                    rulesParent, genesParent = generate_script(script_rule_count)
 
         except KeyboardInterrupt:
             input("enter anything to continue...")
 
 setup_ai_files()
-check_installation_directory()
 
 rulesParent, genesParent = generate_script(script_rule_count)
 #rulesParent, genesParent = read_best()

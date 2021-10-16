@@ -40,9 +40,10 @@ def is_responding(PID):
         return False
 
 
+
 class Launcher:
     def __init__(self,
-                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
+                 executable_path: str = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe"):
         self.executable_path = executable_path
         self.directory, self.aoc_name = os.path.split(executable_path)
         # self.dll_path = b'C:/Shared/AoE/aoc-auto-game/Release/aoc-auto-game.dll'
@@ -87,10 +88,14 @@ class Launcher:
         windll.kernel32.CloseHandle(aoc_handle)
 
         self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
-        self.autogame.call('ResetGameSettings')  # usually reset the settings to make sure everything is valid
-        self.autogame.call('SetGameMapType', 9)  # Set to Arabia
-        self.autogame.call('SetGameDifficulty', 0)  # Set to hardest
-        self.autogame.call('SetGameMapSize', 2)
+        try:
+            self.autogame.call('ResetGameSettings')  # usually reset the settings to make sure everything is valid
+            self.autogame.call('SetGameMapType', 9)  # Set to Arabia
+            self.autogame.call('SetGameDifficulty', 0)  # Set to hardest
+            self.autogame.call('SetGameMapSize', 2)
+        except msgpackrpc.error.TimeoutError:
+            self.kill_game()
+            return None
 
         for index, name in enumerate(names):
             self.autogame.call('SetPlayerComputer', index + 1, name)
@@ -98,7 +103,12 @@ class Launcher:
 
         self.autogame.call('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
         # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
-        self.autogame.call('StartGame')  # start the match
+        try:
+            self.autogame.call('StartGame')  # start the match
+        except msgpackrpc.error.TimeoutError:
+            self.kill_game()
+            return None
+
 
         real_time = 0
         previous_game_time = -1
@@ -138,7 +148,8 @@ class Launcher:
             self.autogame = None
             # print(scores)
             return scores
-        except:
+
+        except msgpackrpc.error.TimeoutError:
             return None
 
     def get_scores(self) -> list[int]:
@@ -152,11 +163,16 @@ class Launcher:
             self.aoc_proc.kill()
             self.aoc_proc = None
         if self.autogame is not None:
-            self.autogame.call("QuitGame")
-            time.sleep(1.0)
-            self.autogame.close()
-            self.autogame = None
+            try:
+                self.autogame.call("QuitGame")
+                time.sleep(1.0)
+                self.autogame.close()
+                self.autogame = None
+            except:
+                os.system("taskkill /f /im age2_x1.5.exe")
 
-
-l = Launcher()
-l.launch_game(["HD"] * 8, real_time_limit=10)
+    def get_scores(self) -> list[int]:
+        if self.autogame is None or not self.autogame.call('GetGameInProgress'):
+            print("Cannot return scores when there's no game running!")
+            return [0] * len(self.names)
+        return [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(self.names))]
