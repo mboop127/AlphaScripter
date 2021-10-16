@@ -136,8 +136,6 @@ class Launcher:
             if 0 < real_time_limit < current_time:
                 print("Real time's up!")
                 break
-
-
             running_games = self.get_running_games()
 
         self.quit_all_games()
@@ -278,7 +276,7 @@ class Launcher:
             try:
                 rpc_client.close()
             except msgpackrpc.error.TimeoutError:
-                print("Game not responding.")
+                print("Game not responding. Closing game failed.")
 
         if process is not None:
             try:  # Try killing the process normally
@@ -290,4 +288,4 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 l = Launcher()
-l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=3)
+l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=10)
