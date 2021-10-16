@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 from ctypes import windll
+from typing import Union
 
 import msgpackrpc
 
@@ -25,6 +26,48 @@ civs = {
     "huns": 17,
     "koreans": 18,
     "random": 19
+}
+
+maps = {
+    "arabia": 9,
+    "archipelago": 10,
+    "baltic": 11,
+    "black_forest": 12,
+    "coastal": 13,
+    "continental": 14,
+    "crater_cake": 15,
+    "fortress": 16,
+    "gold_rush": 17,
+    "highland": 18,
+    "islands": 19,
+    "mediterranean": 20,
+    "migration": 21,
+    "rivers": 22,
+    "team_islands": 23,
+    "random_map": 24,
+    "random": 24,
+    "scandinavia": 25,
+    "mongolia": 26,
+    "yucatan": 27,
+    "salt_marsh": 28,
+    "arena": 29,
+    "oasis": 31,
+    "ghost_lake": 32,
+    "nomad": 33,
+    "iberia": 34,
+    "britain": 35,
+    "mideast": 36,
+    "texas": 37,
+    "italy": 38,
+    "central_america": 39,
+    "france": 40,
+    "norse_lands": 41,
+    "sea_of_japan": 42,
+    "byzantium": 43,
+    "random_land_map": 45,
+    "random_real_world_map": 47,
+    "blind_random": 48,
+    "conventional_random_map": 49
 }
 
 
@@ -51,7 +94,13 @@ class Launcher:
         self.autogame = None
         self.aoc_proc = None
 
-    def launch_game(self, names: list[str], civs: list[int] = None, real_time_limit: int = 0, game_time_limit: int = 0):
+    def launch_game(self,
+                    names: list[str],
+                    civs: list[int] = None,
+                    real_time_limit: int = 0,
+                    game_time_limit: int = 0,
+                    map_id: Union[str, int] = 9):
+
         self.names = names
         if names is None or len(names) < 2 or len(names) > 8:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
@@ -61,6 +110,16 @@ class Launcher:
 
         if civs is None:
             civs = [17] * len(names)
+
+        if isinstance(map_id, str):
+            m = map_id.lower()
+            m = m.replace(" ", "_")
+            if m in maps.keys():
+                map_id = maps[m]  # Convert string into valid map integer
+            else:
+                raise Exception(f"Map ID {map_id} is not valid. Valid choices: {list(maps.keys())}")
+        elif isinstance(map_id, int) and map_id not in maps.values():
+            print(f"Warning! The map id given : '{map_id}' is not a standard map. This can lead to issues.")
 
         # kill any previous aoc processes
         # aoc_procs = [proc for proc in psutil.process_iter() if proc.name() == self.aoc_name]
@@ -86,19 +145,25 @@ class Launcher:
         windll.kernel32.VirtualFreeEx(aoc_handle, remote_memory, 0, 0x00008000)
         windll.kernel32.CloseHandle(aoc_handle)
 
-        self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
-        self.autogame.call('ResetGameSettings')  # usually reset the settings to make sure everything is valid
-        self.autogame.call('SetGameMapType', 9)  # Set to Arabia
-        self.autogame.call('SetGameDifficulty', 0)  # Set to hardest
-        self.autogame.call('SetGameMapSize', 2)
+        try:
+            self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
+            self.autogame.call('ResetGameSettings')  # usually reset the settings to make sure everything is valid
+            self.autogame.call('SetGameMapType', map_id)  # Set to Arabia
+            self.autogame.call('SetGameDifficulty', 0)  # Set to hardest
+            self.autogame.call('SetGameRevealMap', 2)
+            self.autogame.call('SetGameMapSize', 2)
 
-        for index, name in enumerate(names):
-            self.autogame.call('SetPlayerComputer', index + 1, name)
-            self.autogame.call('SetPlayerCivilization', index + 1, civs[index])
+            for index, name in enumerate(names):
+                self.autogame.call('SetPlayerComputer', index + 1, name)
+                self.autogame.call('SetPlayerCivilization', index + 1, civs[index])
 
-        self.autogame.call('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
-        # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
-        self.autogame.call('StartGame')  # start the match
+            self.autogame.call('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
+            # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
+            self.autogame.call('StartGame')  # start the match
+        except TimeoutError:
+            print("Game couldn't start! Program crashed. Killing process.")
+            self.kill_game()
+            return None
 
         real_time = 0
         previous_game_time = -1
@@ -116,7 +181,8 @@ class Launcher:
             time.sleep(1.0)
             try:
                 current_game_time = int(self.autogame.call('GetGameTime'))
-            except:
+            except TimeoutError:
+                print("Game is not responding. Gametime can't be extracted.")
                 break
 
             if current_game_time <= previous_game_time:
@@ -133,12 +199,12 @@ class Launcher:
 
         try:
             scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
-            self.autogame.call('QuitGame')  # go back to the main menu
-            self.autogame.close()
-            self.autogame = None
-            # print(scores)
+            self.quit_game(close_game=True)
+            print(scores)
             return scores
-        except:
+        except TimeoutError:
+            print("Game is not responding. Can't get scores. Killing the process.")
+            self.kill_game()
             return None
 
     def get_scores(self) -> list[int]:
@@ -147,16 +213,25 @@ class Launcher:
             return [0] * len(self.names)
         return [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(self.names))]
 
+    def quit_game(self, close_game: bool = False):
+        if self.autogame is not None:
+            self.autogame.call("QuitGame")
+            time.sleep(1.0)
+            if close_game:
+                self.autogame.close()
+                self.autogame = None
+                if self.aoc_proc is not None:
+                    self.aoc_proc.kill()
+                    self.aoc_proc = None
+
     def kill_game(self):
         if self.aoc_proc is not None:
             self.aoc_proc.kill()
             self.aoc_proc = None
         if self.autogame is not None:
-            self.autogame.call("QuitGame")
-            time.sleep(1.0)
             self.autogame.close()
             self.autogame = None
 
 
 l = Launcher()
-l.launch_game(["HD"] * 8, real_time_limit=10)
+l.launch_game(["Barbarian"] * 8, real_time_limit=10)
