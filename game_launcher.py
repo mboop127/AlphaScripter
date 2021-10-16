@@ -5,6 +5,7 @@ from ctypes import windll
 from typing import Union
 
 import msgpackrpc
+import psutil
 
 civs = {
     "britons": 1,
@@ -88,11 +89,10 @@ class Launcher:
                  executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
         self.executable_path = executable_path
         self.directory, self.aoc_name = os.path.split(executable_path)
-        # self.dll_path = b'C:/Shared/AoE/aoc-auto-game/Release/aoc-auto-game.dll'
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
         self.names = None
-        self.autogame = None
-        self.aoc_proc = None
+        self.autogame: msgpackrpc.Client = None
+        self.aoc_proc: subprocess.Popen = None
 
     def launch_game(self,
                     names: list[str],
@@ -145,25 +145,21 @@ class Launcher:
         windll.kernel32.VirtualFreeEx(aoc_handle, remote_memory, 0, 0x00008000)
         windll.kernel32.CloseHandle(aoc_handle)
 
-        try:
-            self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
-            self.autogame.call('ResetGameSettings')  # usually reset the settings to make sure everything is valid
-            self.autogame.call('SetGameMapType', map_id)  # Set to Arabia
-            self.autogame.call('SetGameDifficulty', 0)  # Set to hardest
-            self.autogame.call('SetGameRevealMap', 2)
-            self.autogame.call('SetGameMapSize', 2)
+        self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
 
-            for index, name in enumerate(names):
-                self.autogame.call('SetPlayerComputer', index + 1, name)
-                self.autogame.call('SetPlayerCivilization', index + 1, civs[index])
+        self.call_safe('ResetGameSettings')  # usually reset the settings to make sure everything is valid
+        self.call_safe('SetGameMapType', map_id)  # Set to Arabia
+        self.call_safe('SetGameDifficulty', 0)  # Set to hardest
+        self.call_safe('SetGameRevealMap', 2)
+        self.call_safe('SetGameMapSize', 2)
 
-            self.autogame.call('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
-            # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
-            self.autogame.call('StartGame')  # start the match
-        except TimeoutError:
-            print("Game couldn't start! Program crashed. Killing process.")
-            self.kill_game()
-            return None
+        for index, name in enumerate(names):
+            self.call_safe('SetPlayerComputer', index + 1, name)
+            self.call_safe('SetPlayerCivilization', index + 1, civs[index])
+
+        self.call_safe('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
+        # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
+        self.call_safe('StartGame')  # start the match
 
         real_time = 0
         previous_game_time = -1
@@ -175,18 +171,14 @@ class Launcher:
                 self.kill_game()
                 return None
             # If the game is no longer in progress
-            if not self.autogame.call('GetGameInProgress'):
+            if not self.call_safe('GetGameInProgress'):
                 break
 
             time.sleep(1.0)
-            try:
-                current_game_time = int(self.autogame.call('GetGameTime'))
-            except TimeoutError:
-                print("Game is not responding. Gametime can't be extracted.")
-                break
+            current_game_time = int(self.call_safe('GetGameTime'))
 
             if current_game_time <= previous_game_time:
-                print("The game time isn't progressing. The game has probably crashed.")
+                print("The game time isn't progressing. The game has probably crashed because of some in-game error.")
                 self.kill_game()
                 return None
 
@@ -197,15 +189,10 @@ class Launcher:
             if (0 < real_time_limit < real_time) or (0 < game_time_limit < current_game_time):
                 break
 
-        try:
-            scores = [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(names))]
-            self.quit_game(close_game=True)
-            print(scores)
-            return scores
-        except TimeoutError:
-            print("Game is not responding. Can't get scores. Killing the process.")
-            self.kill_game()
-            return None
+        scores = [self.call_safe("GetPlayerScore", i + 1) for i in range(len(names))]
+        self.quit_game(quit_program=True)
+        print(scores)
+        return scores
 
     def get_scores(self) -> list[int]:
         if self.autogame is None or not self.autogame.call('GetGameInProgress'):
@@ -213,24 +200,76 @@ class Launcher:
             return [0] * len(self.names)
         return [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(self.names))]
 
-    def quit_game(self, close_game: bool = False):
+    def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True):
+        """
+        Call a method in the autogame in a safe way, where exceptions are handled.
+
+        :param method: The name of the method to call.
+        :param param1: The first parameter for the method.
+        :param param2: The second parameter for the method.
+        :param kill_on_except: Whether to kill the process if calling fails.
+        :return: The return of the method call, if available. None if exception occurs or game isn't running.
+        """
+
+        if self.autogame is None or self.aoc_proc is None:
+            return None
+        try:
+            if param1 is not None and param2 is not None:
+                return self.autogame.call(method, param1, param2)
+            elif param1 is not None:
+                return self.autogame.call(method, param1)
+            else:
+                return self.autogame.call(method)
+
+        except msgpackrpc.error.TimeoutError:
+            print("Request to game timed out.")
+            if kill_on_except:
+                self.kill_game()
+            return None
+
+    def quit_game(self, quit_program: bool = False, force_kill_on_fail: bool = True):
+        """
+        Quit the game to the main menu.
+
+        :param force_kill_on_fail: Whether to force stop the process when quitting to main menu fails.
+        :param quit_program: If True, closes the window and quits the program. Else just stays in the main menu.
+        """
+
         if self.autogame is not None:
-            self.autogame.call("QuitGame")
-            time.sleep(1.0)
-            if close_game:
-                self.autogame.close()
-                self.autogame = None
-                if self.aoc_proc is not None:
-                    self.aoc_proc.kill()
-                    self.aoc_proc = None
+            try:
+                self.autogame.call("QuitGame")
+                time.sleep(1.0)
+                if quit_program:
+                    self.autogame.close()
+                    self.autogame = None
+                    if self.aoc_proc is not None:
+                        self.aoc_proc.kill()
+                        self.aoc_proc = None
+            except msgpackrpc.error.TimeoutError:
+                print("Quitting to main menu failed.")
+                if force_kill_on_fail:
+                    self.kill_game()
 
     def kill_game(self):
-        if self.aoc_proc is not None:
-            self.aoc_proc.kill()
-            self.aoc_proc = None
+        """
+        Kill the game forcefully. The process will be killed as well.
+        """
+
         if self.autogame is not None:
-            self.autogame.close()
-            self.autogame = None
+            try:
+                self.autogame.close()
+                self.autogame = None
+            except msgpackrpc.error.TimeoutError:
+                print("Game not responding.")
+                self.autogame = None
+
+        if self.aoc_proc is not None:
+            try:  # Try killing the process normally
+                self.aoc_proc.kill()
+                self.aoc_proc = None
+            except:  # If that fails for whatever reason, terminate the process.
+                p: psutil.Process = psutil.Process(self.aoc_proc.pid)
+                p.terminate()
 
 
 l = Launcher()
