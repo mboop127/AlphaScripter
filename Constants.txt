@@ -194,7 +194,6 @@
 (defconst any 2)
 (defconst enemy 3)
 
-(defconst forage-food 16)
 (defconst sheep-food 958)
 (defconst boar-food 910)
 
@@ -492,7 +491,6 @@
 (defconst max-wood-escrow 0)
 (defconst max-food-escrow 1000)
 (defconst max-gold-escrow 500)
-(defconst feudal-f2 425)
 #end-if
 
 ;garbage vars
