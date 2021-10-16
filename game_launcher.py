@@ -72,18 +72,6 @@ maps = {
 }
 
 
-def is_responding(PID):
-    return True
-    os.system('tasklist /FI "PID eq %d" /FI "STATUS eq running" > tmp.txt' % PID)
-    tmp = open('tmp.txt', 'r')
-    a = tmp.readlines()
-    tmp.close()
-    if int(a[-1].split()[1]) == PID:
-        return True
-    else:
-        return False
-
-
 class Launcher:
     def __init__(self,
                  executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
@@ -91,16 +79,16 @@ class Launcher:
         self.directory, self.aoc_name = os.path.split(executable_path)
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
         self.names = None
-        self.autogame: msgpackrpc.Client = None
-        self.aoc_proc: subprocess.Popen = None
+        self.games: list[tuple[msgpackrpc.Client, subprocess.Popen]] = []
 
     def launch_game(self,
                     names: list[str],
                     civs: list[int] = None,
                     real_time_limit: int = 0,
                     game_time_limit: int = 0,
-                    map_id: Union[str, int] = 9):
-
+                    map_id: Union[str, int] = 9,
+                    number_of_instances: int = 1):
+        self.quit_all_games(quit_program=True)
         self.names = names
         if names is None or len(names) < 2 or len(names) > 8:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
@@ -121,17 +109,66 @@ class Launcher:
         elif isinstance(map_id, int) and map_id not in maps.values():
             print(f"Warning! The map id given : '{map_id}' is not a standard map. This can lead to issues.")
 
+        for i in range(number_of_instances):
+            port = 64720 + i
+            process = self._launch(multiple=number_of_instances > 1, port=port)
+            rpc_client = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", port))
+            self.games.append((rpc_client, process))
+
+        current_time = 0
+        self._start_all_games(names, civs, map_id)
+        scores = [[0] * len(names)] * len(self.games)
+        running_games = self.get_running_games()
+        while running_games:
+            time.sleep(1)
+            current_time += 1
+
+            for running_game_index in running_games:
+                scores[running_game_index] = self.get_scores(running_game_index)
+
+            if game_time_limit > 0:
+                for i in range(len(self.games)):
+                    if self.call_safe('GetGameTime', game_index=i) > game_time_limit:
+                        print(f"Time's up for game {i}!")
+                        self.quit_game(i)
+
+            print(f"Time {current_time} , Scores {scores}")
+            if 0 < real_time_limit < current_time:
+                print("Real time's up!")
+                break
+
+
+            running_games = self.get_running_games()
+
+        self.quit_all_games()
+        print(scores)
+        return scores
+
+    def get_running_games(self) -> list:
+        result = []
+        for index, game in enumerate(self.games):
+            rpc, proc = game
+            if rpc is None or proc is None:
+                continue
+            if self.call_safe('GetGameInProgress', game_index=index):
+                result.append(index)
+        return result
+
+    def _launch(self, multiple: bool = False, port: int = 64720) -> subprocess.Popen:
         # kill any previous aoc processes
         # aoc_procs = [proc for proc in psutil.process_iter() if proc.name() == self.aoc_name]
         # for aoc_proc in aoc_procs: aoc_proc.kill()
 
-        # launch aoc and wait for it to init
-        self.aoc_proc = subprocess.Popen(self.executable_path)
+        if multiple:
+            aoc_proc = subprocess.Popen(self.executable_path + " -multipleinstances -autogameport " + str(port))
+        else:
+            aoc_proc = subprocess.Popen(self.executable_path)
+
         # to launch the rpc server with another port, it could be launched like this:
         # aoc_proc = subprocess.Popen(aoc_path + " -autogameport 64721")
 
         # write dll path into aoc memory
-        aoc_handle = windll.kernel32.OpenProcess(0x1FFFFF, False, self.aoc_proc.pid)  # PROCESS_ALL_ACCESS
+        aoc_handle = windll.kernel32.OpenProcess(0x1FFFFF, False, aoc_proc.pid)  # PROCESS_ALL_ACCESS
         remote_memory = windll.kernel32.VirtualAllocEx(aoc_handle, 0, 260, 0x3000, 0x40)
         windll.kernel32.WriteProcessMemory(aoc_handle, remote_memory, self.dll_path, len(self.dll_path), 0)
 
@@ -144,82 +181,56 @@ class Launcher:
         # clean up
         windll.kernel32.VirtualFreeEx(aoc_handle, remote_memory, 0, 0x00008000)
         windll.kernel32.CloseHandle(aoc_handle)
+        return aoc_proc
 
-        self.autogame = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", 64720))
+    def _start_all_games(self, names, civs, map_id):
+        for i in range(len(self.games)):
+            self._start_game(i, names, civs, map_id)
 
-        self.call_safe('ResetGameSettings')  # usually reset the settings to make sure everything is valid
-        self.call_safe('SetGameMapType', map_id)  # Set to Arabia
-        self.call_safe('SetGameDifficulty', 0)  # Set to hardest
-        self.call_safe('SetGameRevealMap', 2)
-        self.call_safe('SetGameMapSize', 2)
-
+    def _start_game(self, game_index, names, civs, map_id):
+        self.call_safe('ResetGameSettings', game_index=game_index)
+        self.call_safe('SetGameMapType', map_id, game_index=game_index)
+        self.call_safe('SetGameDifficulty', 0, game_index=game_index)  # Set to hardest
+        self.call_safe('SetGameRevealMap', 2, game_index=game_index)  # Set to standard exploration
+        self.call_safe('SetGameMapSize', 2, game_index=game_index)  # Set to medium map size
+        self.call_safe('SetRunUnfocused', True, game_index=game_index)
+        self.call_safe('SetRunFullSpeed', True, game_index=game_index)
+        #self.call_safe('SetUseInGameResolution', False, game_index=game_index)
         for index, name in enumerate(names):
-            self.call_safe('SetPlayerComputer', index + 1, name)
-            self.call_safe('SetPlayerCivilization', index + 1, civs[index])
+            self.call_safe('SetPlayerComputer', index + 1, name, game_index=game_index)
+            self.call_safe('SetPlayerCivilization', index + 1, civs[index], game_index=game_index)
+        self.call_safe('StartGame', game_index=game_index)
+        #self.call_safe('SetWindowMinimized', True, game_index=game_index)
 
-        self.call_safe('SetRunFullSpeed', True)  # run the game logic as fast as possible (experimental)
-        # autogame.call('SetRunUnfocused', True)  # allow the game to run while minimized
-        self.call_safe('StartGame')  # start the match
-
-        real_time = 0
-        previous_game_time = -1
-
-        while True:  # wait until the game has finished
-            # If we are not responding, kill the game
-            if not is_responding(self.aoc_proc.pid):
-                print("Game has crashed.")
-                self.kill_game()
-                return None
-            # If the game is no longer in progress
-            if not self.call_safe('GetGameInProgress'):
-                break
-
-            time.sleep(1.0)
-            current_game_time = int(self.call_safe('GetGameTime'))
-
-            if current_game_time <= previous_game_time:
-                print("The game time isn't progressing. The game has probably crashed because of some in-game error.")
-                self.kill_game()
-                return None
-
-            previous_game_time = current_game_time
-            real_time += 1
-
-            # If we are over our real time limit or game time limit
-            if (0 < real_time_limit < real_time) or (0 < game_time_limit < current_game_time):
-                break
-
-        scores = [self.call_safe("GetPlayerScore", i + 1) for i in range(len(names))]
-        self.quit_game(quit_program=True)
-        print(scores)
-        return scores
-
-    def get_scores(self) -> list[int]:
-        if self.autogame is None or not self.autogame.call('GetGameInProgress'):
+    def get_scores(self, game_index: int) -> list[int]:
+        rpc_client, process = self.games[game_index]
+        if process is None or not self.call_safe('GetGameInProgress', game_index=game_index):
             print("Cannot return scores when there's no game running!")
             return [0] * len(self.names)
-        return [self.autogame.call("GetPlayerScore", i + 1) for i in range(len(self.names))]
+        return [self.call_safe("GetPlayerScore", i + 1, game_index=game_index) for i in range(len(self.names))]
 
-    def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True):
+    def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True, game_index: int = 0):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
 
+        :param game_index: The index of the game
         :param method: The name of the method to call.
         :param param1: The first parameter for the method.
         :param param2: The second parameter for the method.
         :param kill_on_except: Whether to kill the process if calling fails.
         :return: The return of the method call, if available. None if exception occurs or game isn't running.
         """
-
-        if self.autogame is None or self.aoc_proc is None:
+        if not self.games:
             return None
+
+        rpc_client, process = self.games[game_index]
         try:
             if param1 is not None and param2 is not None:
-                return self.autogame.call(method, param1, param2)
+                return rpc_client.call(method, param1, param2)
             elif param1 is not None:
-                return self.autogame.call(method, param1)
+                return rpc_client.call(method, param1)
             else:
-                return self.autogame.call(method)
+                return rpc_client.call(method)
 
         except msgpackrpc.error.TimeoutError:
             print("Request to game timed out.")
@@ -227,50 +238,56 @@ class Launcher:
                 self.kill_game()
             return None
 
-    def quit_game(self, quit_program: bool = False, force_kill_on_fail: bool = True):
+    def quit_all_games(self, quit_program: bool = True, force_kill_on_fail: bool = True):
+        for i in self.get_running_games():
+            self.quit_game(game_index=i, quit_program=quit_program, force_kill_on_fail=force_kill_on_fail)
+
+    def quit_game(self, game_index: int = 0, quit_program: bool = True, force_kill_on_fail: bool = True):
         """
         Quit the game to the main menu.
 
+        :param game_index: The index of the game that will be quit.
         :param force_kill_on_fail: Whether to force stop the process when quitting to main menu fails.
         :param quit_program: If True, closes the window and quits the program. Else just stays in the main menu.
         """
 
-        if self.autogame is not None:
+        rpc_client, process = self.games[game_index]
+
+        if rpc_client is not None:
             try:
-                self.autogame.call("QuitGame")
+                rpc_client.call("QuitGame")
                 time.sleep(1.0)
                 if quit_program:
-                    self.autogame.close()
-                    self.autogame = None
-                    if self.aoc_proc is not None:
-                        self.aoc_proc.kill()
-                        self.aoc_proc = None
+                    rpc_client.close()
+                    if process is not None:
+                        process.kill()
+                    self.games[game_index] = (None, None)
+
             except msgpackrpc.error.TimeoutError:
                 print("Quitting to main menu failed.")
                 if force_kill_on_fail:
-                    self.kill_game()
+                    self.kill_game(game_index=game_index)
 
-    def kill_game(self):
+    def kill_game(self, game_index: int = 0):
         """
         Kill the game forcefully. The process will be killed as well.
         """
+        rpc_client, process = self.games[game_index]
 
-        if self.autogame is not None:
+        if rpc_client is not None:
             try:
-                self.autogame.close()
-                self.autogame = None
+                rpc_client.close()
             except msgpackrpc.error.TimeoutError:
                 print("Game not responding.")
-                self.autogame = None
 
-        if self.aoc_proc is not None:
+        if process is not None:
             try:  # Try killing the process normally
-                self.aoc_proc.kill()
-                self.aoc_proc = None
+                process.kill()
             except:  # If that fails for whatever reason, terminate the process.
-                p: psutil.Process = psutil.Process(self.aoc_proc.pid)
+                p: psutil.Process = psutil.Process(process.pid)
                 p.terminate()
 
+        self.games[game_index] = (None, None)
 
 l = Launcher()
-l.launch_game(["Barbarian"] * 8, real_time_limit=10)
+l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=3)
