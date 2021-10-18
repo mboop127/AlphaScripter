@@ -407,7 +407,7 @@ def run_ffa(genesParent, rulesParent):
             for i in range(len(master_score_list)):
                 try:
                     for ai in range(len(ai_names)):
-                        score_list[ai] += master_score_list[ai][i]
+                        score_list[ai] += master_score_list[i][ai]
                 except:
                     pass
 
