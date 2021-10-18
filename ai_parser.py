@@ -1,7 +1,8 @@
 import os
 import re
 import pickle
-import timeit
+from dataclasses import dataclass, field
+import ai_parser
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -91,20 +92,140 @@ def inside_outer_parentheses(string: str):
 
 # =========================================
 
+operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
+
+
+@dataclass
+class FactBase:
+    name: str  # For a simple, this the name of the fact. For a Complex, this is an operator.
+    depth: int = field(init=False, default=0)
+
+    @property
+    def is_simple(self) -> bool:
+        return self.name not in operators
+
+    @property
+    def is_complex(self) -> bool:
+        return not self.is_simple
+
+    def set_depth(self, value: int):
+        self.depth = value
+
+
+@dataclass
+class Simple(FactBase):
+    params: list
+    length: int
+
+    def __init__(self, params, *args):
+        if isinstance(params, str):
+            self.name = params
+            if args:
+                self.params = self.__get_params(args)
+        if isinstance(params, (list, tuple)):
+            if len(params) > 5:
+                raise Exception("A Simple only take a name and a maximum of 4 arguments.")
+            self.name = params[0]
+            self.params = self.__get_params(list(params)[1:])
+
+        if self.params:
+            self.length = len(params)
+        self.depth = 0
+
+    @staticmethod
+    def __get_params(params: list) -> list:
+        if params is None:
+            return None
+        # If the params passed through are a list or tuple, we just use that one.
+        if isinstance(params, list) or isinstance(params, tuple) or isinstance(params, set):
+            if len(params) > 4:
+                raise Exception("Cannot create Simple with more than 4 parameters!")
+            return [str(x) for x in params]
+        raise Exception("Arguments passed to the Simple init should be either a single list or multiple int and string")
+
+    def __str__(self):
+        string = f"({self.name} "
+        if self.params:
+            string += ' '.join(self.params)
+
+        return string + ")"
+
+    def __len__(self):
+        return self.length
+
+
+@dataclass
+class Complex(FactBase):
+    param1: FactBase
+    param2: FactBase = None
+
+    def __init__(self, name: str, param1: FactBase, param2: FactBase = None):
+        self.name = name
+        self.param1 = param1
+        self.param2 = param2
+        self.set_depth(0)  # Set the depths recursively
+
+    def __str__(self):
+        name_tabs = '\t' * (1 if len(self.name) > 2 else 2)
+        result = f"({self.name}{name_tabs}{self.param1}"
+        if self.param2:
+            tabs = '\t' * (self.param2.depth * 2 + 1)  # The plus 1 is because every rule has every line indented 1 tab
+            result += f"\n{tabs}{self.param2}"
+        return result + ")"
+
+    def set_depth(self, value: int):
+        self.depth = value
+        self.param1.set_depth(value + 1)
+        if self.param2:
+            self.param2.set_depth(value + 1)
+
+
+@dataclass
+class Rule:
+    facts: list[FactBase]
+    actions: list
+
+    def __init__(self, facts: list[FactBase], actions: list):
+        if not facts:
+            raise Exception("Cannot create a rule without any facts!")
+        elif not actions:
+            raise Exception("Cannot create a rule without any actions!")
+        self.facts = facts
+        self.actions = actions
+
+    def __str__(self):
+        string = "(defrule\n"
+        for fact in self.facts:
+            if fact.depth == 0:
+                string += "\t" + str(fact) + "\n"
+        string += "=>\n"
+        for action in self.actions:
+            string += "\t" + str(action) + "\n"
+        string += ")"
+        return string
+
+    def __repr__(self):
+        return str(self)
+
+
 class AIParser:
     @staticmethod
-    def read_single(path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per", raise_exception: bool = True):
+    def read_single(path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per",
+                    raise_exception: bool = True):
         """
         Read a single .per file and return the AI.
 
         :param path: The path to the .per file.
-        :param raise_exception: Whether to raise Exceptions.
+        :param raise_exception: Whether to raise Exceptions if for example a file cannot be found.
         :return: An instance of the AI class if found, else None.
         """
 
         if os.path.isfile(path):
             if path.endswith(".per"):
                 return AI(path=path)
+            elif path.endswith(".pickle"):
+                ai = open(path, "rb")
+                return pickle.load(ai)
             elif raise_exception:
                 raise Exception(f"Cannot read from {path}. The file is not a .per file.")
         elif raise_exception:
@@ -128,7 +249,14 @@ class AIParser:
         result = dict() if as_dict else []
         found = set()
         for file in os.listdir(path):
-            name = file.removesuffix(".per")
+
+            if file.endswith(".per"):
+                name = file.removesuffix(".per")
+            elif file.endswith(".pickle"):
+                name = file.removesuffix(".pickle")
+            else:
+                continue
+
             if names and name not in names:
                 continue
             ai = AIParser.read_single(os.path.join(path, file), raise_exception=False)
@@ -144,10 +272,21 @@ class AIParser:
 
         return result
 
+    @staticmethod
+    def write_single(ai, target_directory, pickled: bool = True) -> bool:
+        if not dir_exists(target_directory, raise_exception=True) or not isinstance(ai, AI):
+            print(f"Warning! Writing AI {ai} failed.")
+            return False
+        if pickled:
+            pickle.dump(ai, os.path.join(target_directory, ai.name + ".pickle"))
+            return True
+        else:
+            ai.write()
+
 
 class AI:
-    def __init__(self, path):
-        self.path = path  # The path to the AI .per file
+    def __init__(self, path: str):
+        self.path = self.__repair_path(path)  # The path to the AI .per file
         # The directory in which this AI's .per file is located & The name of this AI.
         self.parent_directory, self.name = os.path.split(path)
         self.name = self.name.removesuffix(".per")
@@ -157,8 +296,21 @@ class AI:
         self.simple_indicator = '*'
         self.complex_indicator = '%'
         self.operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
+        self.operators_inverse = dict()
+        for operator_name, operator_symbol in self.operators.items():
+            self.operators_inverse[operator_symbol] = operator_name
 
         self.constants, self.rules = self._parse_raw_content(content=self.raw_content)
+        x = 0
+
+    @staticmethod
+    def __repair_path(path: str) -> str:
+        if os.path.isfile(path) and path.endswith(".per"):
+            return path
+        raise Exception(f"Cannot instance AI with incorrect path {path}. \n There could be a few reasons for this. \n"
+                        f"1. The path specified does not reference to a valid location / file. \n"
+                        f"2. The path specified does not reference to a .per file but some type of file. \n"
+                        f"3. Between pickling and unpickling this AI, the corresponding .per file has been deleted.")
 
     def _parse_raw_content(self, content):
         constants = dict()
@@ -231,16 +383,20 @@ class AI:
         # TODO parse actions correctly
         action_lines = lines[splitter_index + 1:]
         actions = self._lines_to_actions(action_lines)
-        return facts, actions
+        return Rule(facts, actions)
 
     @staticmethod
     def _lines_to_actions(lines: list[str]):
         actions = []
-        for line in lines:
-            line = re.sub(r"[\s\t\n\r]*\([\s\t\n\r]*", "", line)  # Remove all irrelevant whitespace
-            line = re.sub(r"[\s\t\n\r]*\)[\s\t\n\r]*", "", line)  # Remove all irrelevant whitespace
-            if len(line) > 0:
-                actions.append(line.split())
+        string = "".join(lines)
+        string = re.sub(r"[\s\t\n\r]*\([\s\t\n\r]*", "(", string)  # Remove whitespace
+        string = re.sub(r"[\s\t\n\r]*\)[\s\t\n\r]*", ")", string)  # Remove whitespace
+        pattern = r"\([a-zA-Z0-9\- ><=!:\+]+\)"
+        for action_string in re.findall(pattern, string):
+            action_string = action_string.removesuffix(")")
+            action_string = action_string.removeprefix("(")
+            if len(action_string) > 0:
+                actions.append(Simple(action_string.split()))
         return actions
 
     def _lines_to_facts(self, lines: list[str]):
@@ -253,8 +409,9 @@ class AI:
             string = re.sub(r"\(\s*" + operator + r"\s*\(", f"({value}(", string)
 
         simples, string, without_globals = self._extract_simple_facts(string)
-        complexes = self._extract_complex_facts(without_globals)
-        return simples, complexes
+        complexes = self._extract_complex_facts(without_globals, simples)
+        simples.extend(complexes)
+        return simples
 
     def _extract_simple_facts(self, string: str):
         without_globals = string
@@ -264,10 +421,8 @@ class AI:
         while match:
             depth = string.count("(", 0, match.start())
             depth -= string.count(")", 0, match.start())
-            simple = match[0][1:-1].split()
-            if len(simple) > 5:
-                raise Exception(f"The fact {simple} should have only 4 parameters!")
-            simples.append(simple)  # Remove the parenthesis TODO Maybe remove using regex.
+            simple_as_list = match[0][1:-1].split()  # Remove the parenthesis TODO Maybe remove using regex.
+            simples.append(Simple(simple_as_list))
             string = string.replace(match[0], f"({self.simple_indicator}{len(simples) - 1})")
             if depth == 0:
                 without_globals = without_globals.replace(match[0], "")
@@ -276,7 +431,7 @@ class AI:
             match = re.search(pattern, string)
         return simples, string, without_globals
 
-    def _extract_complex_facts(self, string: str) -> list:
+    def _extract_complex_facts(self, string: str, simples: list) -> list:
         if len(string) == 0:
             return []
 
@@ -286,26 +441,114 @@ class AI:
         # If we find a match, we most certainly have a valid complex fact
         while match:
             s = match[0]
-            to_str = self.string_to_complex(s)
-            complexes.append(to_str)
+            complexes.append(self.string_to_complex(s, simples, complexes))
             string = string.replace(match[0], f"({self.complex_indicator}{len(complexes) - 1})")
             match = re.search(pattern, string)
         return complexes
 
-    def string_to_complex(self, string: str) -> list:
+    def string_to_complex(self, string: str, simples: list, complexes: list) -> Complex:
         string = string.removesuffix(")")
         string = string.removeprefix("(")
         # The operator symbol, followed by the simple/complex indicator and then the index
         end = string.find(")")
+
         result = [string[0], string[2], int(string[3:end])]
 
-        if string[0] != self.operators["not"]:
-            result.append(string[6])
-            result.append(int(string[7]))
+        index1 = int(string[3:end])
+        param1 = simples[index1] if (string[2] == self.simple_indicator) else complexes[index1]
+        if string[0] == self.operators['not']:
+            return Complex(name="not", param1=param1)
 
-        return result
+        elif string[0] in self.operators.values():
+            start = string.rfind("(")
+            end = string.rfind(")")
+            index2 = int(string[7:end])
+            param2 = simples[index2] if (string[start+1] == self.simple_indicator) else complexes[index2]
+            return Complex(name=self.operators_inverse[string[0]], param1=param1, param2=param2)
+
+        raise Exception(f"{string[0]} is not a valid operator symbol!")
+
+    def rule_to_string(self, rule: tuple) -> str:
+        facts, actions = rule
+        simples, complexes = facts
+
+        simples_strings = dict()
+        for index, simple in enumerate(simples):
+            simples_strings[index] = f"({' '.join(simple)})"
+
+        todo_complexes = dict()  # The complexes that still need to be written
+        for index, complex in enumerate(complexes):
+            todo_complexes[index] = complex
+
+        done_complexes = dict()
+
+        complex_index = 0
+        while len(todo_complexes) > 0:
+            if complex_index in todo_complexes.keys():
+                # Check if its possible to write.
+                complex = todo_complexes[complex_index]
+                possible = True
+                if complex[1] == self.complex_indicator and complex[2] not in done_complexes.keys():
+                    possible = False
+                elif complex[0] != self.operators['not'] and complex[3] == self.complex_indicator and \
+                        complex[4] not in done_complexes.keys():
+                    possible = False
+
+                if possible:
+                    string = f"({self.operators_inverse[complex[0]]}\t"
+                    if complex[1] == self.simple_indicator:
+                        string += simples_strings.pop(complex[2])
+                    if complex[0] != self.operators['not']:
+                        string += "\n"
+                        if complex[3] == self.simple_indicator:
+                            string += simples_strings.pop(complex[4])
+                        else:
+                            string += done_complexes[complex[4]]
+                    string += ")"
+                    done_complexes[complex_index] = string
+                    todo_complexes.pop(complex_index)
+
+            complex_index += 1
+            if complex_index >= len(todo_complexes):
+                complex_index = 0
+
+        final_string = "(defrule \n"
+        for simple_string in simples_strings.values():
+            final_string += simple_string + "\n"
+
+        for complex_string in done_complexes.values():
+            final_string += complex_string + "\n"
+
+        final_string += "=> \n"
+
+        for action in actions:
+            final_string += f"\t({' '.join(action)})\n"
+
+        final_string += ")"
+        print(f"Writing rule {self.rules.index(rule)}")
+        return final_string
+
+    def write(self, target_directory: str = None):
+        destination: str = ""
+        if target_directory is not None and dir_exists(target_directory, raise_exception=True):
+            destination = os.path.join(target_directory, self.name + ".per")
+        elif file_exists(self.path, raise_exception=True):
+            destination = self.path
+        else:
+            raise Exception(f"AI {self.name} couldn't write its content to {destination}, destination doesn't exist!")
+
+        with open(destination, 'w') as file:
+            # Write constants
+            for constant_name, constant_value in self.constants.items():
+                file.write(f"(defconst {constant_name} {constant_value}) \n")
+
+            # Write rules
+            for rule in self.rules:
+                file.write(str(rule) + "\n\n")
 
 
 ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
 example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
-names = {"parent", "a", "b", "c", "d", "e", "f"}
+ai = AIParser.read_single(example_path)
+ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter")
+# names = {"parent", "a", "b", "c", "d", "e", "f"}
