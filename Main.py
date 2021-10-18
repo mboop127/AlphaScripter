@@ -3,11 +3,11 @@ import time
 import subprocess
 import os
 import signal
-from game_launcher_temp import Launcher
+from game_launcher import Launcher
 
 #controls for algorithm
 fails_before_reset = 20
-script_rule_count = 500
+script_rule_count = 400
 mutation_chance = .05
 
 # alphabet = 'abcdefghijklmnopqrstuvwxyz'
@@ -165,8 +165,8 @@ def generate_rules(count):
                         random.choice(alphavalues), random.choice(alphavalues), random.choice(alphavalues),
                         random.choice(alphavalues)]
         if_and = random.randint(1, 3)
-        action_length = random.randint(1, 5)
-        condition_length = random.randint(1, 5)
+        action_length = random.randint(1, 4)
+        condition_length = random.randint(1, 4)
         age_required = random.randint(0, 3)
 
         rules.append([conditions1, actions1, alphavalues1, if_and, action_length, condition_length, age_required])
@@ -400,10 +400,18 @@ def run_ffa(genesParent, rulesParent):
             write_ai(hDNA, hRules, "h")
 
             # reads score
-            l = Launcher()
-            score_list = l.launch_game(ai_names, real_time_limit = 400, game_time_limit = 3600)
+            l = Launcher("C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe")
+            master_score_list = l.launch_game(ai_names, real_time_limit = 300, game_time_limit = 4000, number_of_instances = 2)
+            score_list = [0,0,0,0,0,0,0,0]
 
-            if score_list == None or score_list[0] == None:
+            for i in range(len(master_score_list)):
+                try:
+                    for ai in range(len(ai_names)):
+                        score_list[ai] += master_score_list[i]
+                except:
+                    pass
+
+            if score_list == [0,0,0,0,0,0,0,0] or score_list[0] == None:
                 if generation == 1:
                     generation -= 1
                     rulesParent, genesParent = generate_script(script_rule_count)
@@ -529,9 +537,6 @@ def run_ffa(genesParent, rulesParent):
 def run_vs(genesParent, rulesParent):
     global mutation_chance
 
-    second_placeRules = rulesParent.copy()
-    second_place = genesParent.copy()
-
     #generation = 0
     generation = 1
     fails = 0
@@ -545,26 +550,50 @@ def run_vs(genesParent, rulesParent):
             alphaDNA = genesParent.copy()
             alphaRules = rulesParent.copy()
 
-            betaDNA = mutate_constants(crossed_genes)
-            betaRules = mutate_rules(crossed_rules)
+            betaDNA = mutate_constants(genesParent)
+            betaRules = mutate_rules(rulesParent)
 
             write_ai(alphaDNA, alphaRules, "parent")
             write_ai(betaDNA, betaRules, "b")
             # reads score
-            l = Launcher()
-            score_list = l.launch_game(["parent","b"], real_time_limit = 400, game_time_limit = 3600)
+            master = [0,0]
 
-            if score_list == None or score_list[0] == None:
-                if generation == 1:
-                    generation -= 1
-                    rulesParent, genesParent = generate_script(script_rule_count)
+            failed = False
 
-            else:
+            success = 0
+            fail = 0
 
-                parent_score = score_list[0]
-                b_score = score_list[1]
+            while success < 5:
+                l = Launcher()
+                score_list = l.launch_game(["parent","b"], real_time_limit = 400, game_time_limit = 3600, number_of_instances=10)
 
-                score_list = sorted(score_list, reverse=True)
+                if score_list == None or score_list[0] == None:
+
+                    if generation == 1:
+                        generation -= 1
+                        rulesParent, genesParent = generate_script(script_rule_count)
+                    fail += 1
+
+                    if fail > 10:
+                        break
+                        print("killed loop")
+
+                else:
+                    success += 1
+                    print(str(success))
+                    master[0] += score_list[0]
+                    master[1] += score_list[1]
+
+                time.sleep(1)
+
+
+
+            if not failed:
+
+                parent_score = master[0]
+                b_score = master[1]
+
+                score_list = sorted(master, reverse=True)
 
                 # checks number of rounds with no improvement and sets annealing
                 if parent_score == max(score_list):
@@ -574,14 +603,10 @@ def run_vs(genesParent, rulesParent):
                     fails = 0
                     mutation_chance = .05
 
-                failed = False
 
                 if parent_score == max(score_list):
-                    failed = True
                     winner = genesParent.copy()
                     winnerRules = rulesParent.copy()
-                    second_place = genesParent.copy()
-                    second_placeRules = rulesParent.copy()
                     print("parent won by score: " + str(parent_score))
 
                 elif b_score == max(score_list):
@@ -589,70 +614,6 @@ def run_vs(genesParent, rulesParent):
                     winnerRules = betaRules.copy()
                     print("b won by score: " + str(b_score))
 
-                elif c_score == max(score_list):
-                    winner = cDNA.copy()
-                    winnerRules = cRules.copy()
-                    print("c won by score: " + str(c_score))
-
-                elif d_score == max(score_list):
-                    winner = dDNA.copy()
-                    winnerRules = dRules.copy()
-                    print("d won by score: " + str(d_score))
-
-                elif e_score == max(score_list):
-                    winner = eDNA.copy()
-                    winnerRules = eRules.copy()
-                    print("e won by score: " + str(e_score))
-
-                elif f_score == max(score_list):
-                    winner = fDNA.copy()
-                    winnerRules = fRules.copy()
-                    print("f won by score: " + str(f_score))
-
-                elif g_score == max(score_list):
-                    winner = gDNA.copy()
-                    winnerRules = gRules.copy()
-                    print("g won by score: " + str(g_score))
-
-                else:  # h_score == max(score_list):
-                    winner = hDNA.copy()
-                    winnerRules = hRules.copy()
-                    print("h won by score: " + str(h_score))
-
-                # checks if second best for crossover, also gross and needs to be replaced later
-                if not failed:
-
-                    if parent_score == score_list[1]:
-                        second_place = genesParent.copy()
-                        second_placeRules = rulesParent.copy()
-
-                    elif b_score == score_list[1]:
-                        second_place = betaDNA.copy()
-                        second_placeRules = betaRules.copy()
-
-                    elif c_score == score_list[1]:
-                        second_place = cDNA.copy()
-                        second_placeRules = cRules.copy()
-
-                    elif d_score == score_list[1]:
-                        second_place = dDNA.copy()
-                        second_placeRules = dRules.copy()
-
-                    elif e_score == score_list[1]:
-                        second_place = eDNA.copy()
-                        second_placeRules = eRules.copy()
-
-                    elif f_score == score_list[1]:
-                        second_place = fDNA.copy()
-                        second_placeRules = fRules.copy()
-
-                    elif g_score == score_list[1]:
-                        second_place = gDNA.copy()
-                        second_placeRules = gRules.copy()
-
-                    else:  # h_score == score_list[1]:
-                        second_place = hDNA.copy()
-                        second_placeRules = hRules.copy()
 
                 genesParent = winner.copy()
                 rulesParent = winnerRules.copy()
@@ -676,6 +637,6 @@ setup_ai_files()
 #rulesParent, genesParent = generate_script(script_rule_count)
 rulesParent, genesParent = read_best()
 
-# run_vs(genesParent, rulesParent)
+#run_vs(genesParent, rulesParent)
 # run_score(genesParent, rulesParent)
 run_ffa(genesParent, rulesParent)

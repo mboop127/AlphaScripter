@@ -139,17 +139,17 @@ class Launcher:
                         print(f"Warning! Wasn't able to get the ingame time of game {i}. If the in-game time"
                               f"is over the limit, we can't check now.")
                     elif game_time > game_time_limit:
-                        print(f"Time's up for game {i}!")
+                        #print(f"Time's up for game {i}!")
                         self.quit_game(i)
 
-            print(f"Time {current_time} , Scores {scores}")
+            #print(f"Time {current_time} , Scores {scores}")
             if 0 < real_time_limit < current_time:
                 print("Real time's up!")
                 break
             running_games = self.get_running_games()
 
         self.quit_all_games()
-        print(scores)
+        #print(scores)
         return scores
 
     def get_running_games(self) -> list:
@@ -218,7 +218,6 @@ class Launcher:
     def get_scores(self, game_index: int) -> list[int]:
         """
         Get the scores of a certain game that is currently running.
-
         :param game_index: The index of the game to get the scores from.
         :return: A list of scores, where every index represents the score of a player.
         """
@@ -245,7 +244,6 @@ class Launcher:
     def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True, game_index: int = 0):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
-
         :param game_index: The index of the game
         :param method: The name of the method to call.
         :param param1: The first parameter for the method.
@@ -286,7 +284,6 @@ class Launcher:
     def quit_game(self, game_index: int = 0, quit_program: bool = True, force_kill_on_fail: bool = True):
         """
         Quit the game to the main menu.
-
         :param game_index: The index of the game that will be quit.
         :param force_kill_on_fail: Whether to force stop the process when quitting to main menu fails.
         :param quit_program: If True, closes the window and quits the program. Else just stays in the main menu.
@@ -329,6 +326,3 @@ class Launcher:
                 p.terminate()
 
         self.games[game_index] = (None, None)
-
-l = Launcher()
-l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=5)
