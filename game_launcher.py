@@ -92,7 +92,7 @@ class Launcher:
                     civs: list[int] = None,
                     real_time_limit: int = 0,
                     game_time_limit: int = 0,
-                    map_id: Union[str, int] = 9,
+                    map_id: Union[str, int] = 26,
                     number_of_instances: int = 1):
         self.quit_all_games(quit_program=True)
         self.names = names
@@ -200,8 +200,8 @@ class Launcher:
     def _setup_game(self, game_index: int, names, civs, map_id):
         self.call_safe('ResetGameSettings', game_index=game_index)
         self.call_safe('SetGameMapType', map_id, game_index=game_index)
-        self.call_safe('SetGameDifficulty', 0, game_index=game_index)  # Set to hardest
-        self.call_safe('SetGameRevealMap', 2, game_index=game_index)  # Set to standard exploration
+        self.call_safe('SetGameDifficulty', 1, game_index=game_index)  # Set to hard
+        self.call_safe('SetGameRevealMap', 1, game_index=game_index)  # Set to standard exploration
         self.call_safe('SetGameMapSize', 2, game_index=game_index)  # Set to medium map size
         self.call_safe('SetRunUnfocused', True, game_index=game_index)
         self.call_safe('SetRunFullSpeed', True, game_index=game_index)
