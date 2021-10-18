@@ -401,13 +401,13 @@ def run_ffa(genesParent, rulesParent):
 
             # reads score
             l = Launcher("C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe")
-            master_score_list = l.launch_game(ai_names, real_time_limit = 300, game_time_limit = 4000, number_of_instances = 2)
+            master_score_list = l.launch_game(ai_names, real_time_limit = 300, game_time_limit = 4000, number_of_instances = 5)
             score_list = [0,0,0,0,0,0,0,0]
 
             for i in range(len(master_score_list)):
                 try:
                     for ai in range(len(ai_names)):
-                        score_list[ai] += master_score_list[i]
+                        score_list[ai] += master_score_list[ai][i]
                 except:
                     pass
 
