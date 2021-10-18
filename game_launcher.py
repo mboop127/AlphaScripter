@@ -81,6 +81,12 @@ class Launcher:
         self.names = None
         self.games: list[tuple[msgpackrpc.Client, subprocess.Popen]] = []
 
+    @property
+    def number_of_games(self):
+        if not self.games:
+            return 0
+        return len(self.games)
+
     def launch_game(self,
                     names: list[str],
                     civs: list[int] = None,
@@ -128,7 +134,11 @@ class Launcher:
 
             if game_time_limit > 0:
                 for i in range(len(self.games)):
-                    if self.call_safe('GetGameTime', game_index=i) > game_time_limit:
+                    game_time = self.call_safe('GetGameTime', game_index=i)
+                    if game_time is None:
+                        print(f"Warning! Wasn't able to get the ingame time of game {i}. If the in-game time"
+                              f"is over the limit, we can't check now.")
+                    elif game_time > game_time_limit:
                         print(f"Time's up for game {i}!")
                         self.quit_game(i)
 
@@ -181,11 +191,13 @@ class Launcher:
         windll.kernel32.CloseHandle(aoc_handle)
         return aoc_proc
 
-    def _start_all_games(self, names, civs, map_id):
+    def _start_all_games(self, names, civs, map_id, minimize: bool = False):
+        for i in range(self.number_of_games):
+            self._setup_game(i, names, civs, map_id)
         for i in range(len(self.games)):
-            self._start_game(i, names, civs, map_id)
+            self._start_game(i, minimize)
 
-    def _start_game(self, game_index, names, civs, map_id):
+    def _setup_game(self, game_index: int, names, civs, map_id):
         self.call_safe('ResetGameSettings', game_index=game_index)
         self.call_safe('SetGameMapType', map_id, game_index=game_index)
         self.call_safe('SetGameDifficulty', 0, game_index=game_index)  # Set to hardest
@@ -193,19 +205,42 @@ class Launcher:
         self.call_safe('SetGameMapSize', 2, game_index=game_index)  # Set to medium map size
         self.call_safe('SetRunUnfocused', True, game_index=game_index)
         self.call_safe('SetRunFullSpeed', True, game_index=game_index)
-        #self.call_safe('SetUseInGameResolution', False, game_index=game_index)
+        # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
         for index, name in enumerate(names):
             self.call_safe('SetPlayerComputer', index + 1, name, game_index=game_index)
             self.call_safe('SetPlayerCivilization', index + 1, civs[index], game_index=game_index)
+
+    def _start_game(self, game_index, minimize: bool = False):
         self.call_safe('StartGame', game_index=game_index)
-        #self.call_safe('SetWindowMinimized', True, game_index=game_index)
+        if minimize:
+            self.call_safe('SetWindowMinimized', True, game_index=game_index)
 
     def get_scores(self, game_index: int) -> list[int]:
+        """
+        Get the scores of a certain game that is currently running.
+
+        :param game_index: The index of the game to get the scores from.
+        :return: A list of scores, where every index represents the score of a player.
+        """
+        if game_index < 0 or game_index >= len(self.games):
+            print(f"Cannot return scores of game {game_index} because this is not a valid index."
+                  f"The index must be greater than zero and less than the length of the games list ({len(self.games)})")
+
         rpc_client, process = self.games[game_index]
-        if process is None or not self.call_safe('GetGameInProgress', game_index=game_index):
-            print("Cannot return scores when there's no game running!")
+        if process is None or rpc_client is None or not self.call_safe('GetGameInProgress', game_index=game_index):
+            print("Cannot return scores when there's no game running! Returning zeroed scores.")
             return [0] * len(self.names)
-        return [self.call_safe("GetPlayerScore", i + 1, game_index=game_index) for i in range(len(self.names))]
+
+        scores = []
+        for i in range(len(self.names)):
+            score = self.call_safe("GetPlayerScore", i + 1, game_index=game_index)
+            if score:
+                scores.append(score)
+            else:
+                scores.append(0)
+                print(f"Couldn't get score for player {i + 1}. Setting this score to 0")
+
+        return scores
 
     def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True, game_index: int = 0):
         """
@@ -222,6 +257,14 @@ class Launcher:
             return None
 
         rpc_client, process = self.games[game_index]
+
+        if rpc_client is None or process is None:
+            print(f"Couldn't call method {method} on game {game_index} because either game process or rpc client "
+                  f"doesn't exist.")
+            if kill_on_except:
+                self.kill_game(game_index)
+            return None
+
         try:
             if param1 is not None and param2 is not None:
                 return rpc_client.call(method, param1, param2)
@@ -233,7 +276,7 @@ class Launcher:
         except msgpackrpc.error.TimeoutError:
             print("Request to game timed out.")
             if kill_on_except:
-                self.kill_game()
+                self.kill_game(game_index)
             return None
 
     def quit_all_games(self, quit_program: bool = True, force_kill_on_fail: bool = True):
@@ -266,7 +309,7 @@ class Launcher:
                 if force_kill_on_fail:
                     self.kill_game(game_index=game_index)
 
-    def kill_game(self, game_index: int = 0):
+    def kill_game(self, game_index: int):
         """
         Kill the game forcefully. The process will be killed as well.
         """
@@ -288,4 +331,4 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 l = Launcher()
-l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=10)
+l.launch_game(["Barbarian"] * 4, real_time_limit=30, number_of_instances=5)
