@@ -7,7 +7,7 @@ from typing import Union
 import msgpackrpc
 import psutil
 
-civs = {
+all_civilisations = {
     "britons": 1,
     "franks": 2,
     "goths": 3,
@@ -71,6 +71,57 @@ maps = {
     "conventional_random_map": 49
 }
 
+map_sizes = {'tiny': 0, 'small': 1, 'medium': 2, 'normal': 3, 'large': 4, 'giant': 5}
+difficulties = {'hardest': 0, 'hard': 1, 'moderate': 2, 'standard': 3, 'easiest': 4}
+game_types = {'random_map': 0, 'regicide': 1, 'death_match': 2, 'scenario': 3, 'king_of_the_hill': 4, 'wonder_race': 6,
+              'turbo_random_map': 8}
+starting_resources = {'standard': 0, 'low': 1, 'medium': 2, 'high': 3}
+reveal_map_types = {'normal': 1, 'explored': 2, 'all_visible': 3}
+starting_ages = {'standard': 0, 'dark': 2, 'feudal': 3, 'castle': 4, 'imperial': 5, 'post-imperial': 6}
+victory_types = {'standard': 0, 'conquest': 1, 'relics': 4, 'time_limit': 7, 'score': 8}
+
+
+class GameSettings:
+    def __init__(self, civilisations: list, map='arabia', map_size='medium', difficulty='hard', game_type='random_map',
+                 resources='low', reveal_map='normal', starting_age='dark', victory_type='conquest'):
+
+        self.civilisations = self.correct_civs(civilisations, default='huns')
+        self.map = self.correct_setting(map, maps, 'arabia', 'map name/type')
+        self.map_size = self.correct_setting(map_size, map_sizes, 'medium', 'map size')
+        self.difficulty = self.correct_setting(difficulty, difficulties, 'hard', 'difficulty')
+        self.game_type = self.correct_setting(game_type, game_types, 'random_map', 'game type')
+        self.resources = self.correct_setting(resources, starting_resources, 'standard', 'starting resources')
+        self.reveal_map = self.correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
+        self.starting_age = self.correct_setting(starting_age, starting_ages, 'standard', 'starting age')
+        self.victory_type = self.correct_setting(victory_type, victory_types, 'standard', 'victory type (WIP)')
+
+    @staticmethod
+    def correct_setting(value, possible_values: dict, default, setting_name):
+        if value in possible_values.values():
+            return value
+        elif value.lower() in possible_values.keys():
+            return possible_values[value.lower()]
+        print(f"Warning! Value {value} not valid for setting {setting_name}. Defaulting to {default}.")
+        return possible_values[default]
+
+    @staticmethod
+    def correct_civs(civs: list, default='huns'):
+        if not civs:
+            return []
+        result = []
+        for civ in civs:
+            if civ in all_civilisations.values():
+                result.append(civ)
+            elif civ in all_civilisations.keys():
+                result.append(all_civilisations[civ])
+            else:
+                print(f"Civ {civ} is not valid. Defaulting to {default}.")
+                result.append(default)
+        return result
+
+    @property
+    def civs(self):
+        return self.civilisations
 
 class Launcher:
     def __init__(self,
@@ -87,42 +138,24 @@ class Launcher:
             return 0
         return len(self.games)
 
-    def launch_game(self,
-                    names: list[str],
-                    civs: list[int] = None,
-                    real_time_limit: int = 0,
-                    game_time_limit: int = 0,
-                    map_id: Union[str, int] = 26,
-                    number_of_instances: int = 1):
+    def launch_game(self, names: list[str], game_settings: GameSettings, real_time_limit: int = 0,
+                    game_time_limit: int = 0, instances: int = 1):
         self.quit_all_games(quit_program=True)
         self.names = names
         if names is None or len(names) < 2 or len(names) > 8:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
 
-        if civs is not None and len(civs) != len(names):
-            raise Exception(f"The length of the civs {civs} does not match the length of the names {names}")
+        if game_settings.civs is not None and len(game_settings.civs) != len(names):
+            raise Exception(f"The length of the civs {game_settings.civs} does not match the length of the names {names}")
 
-        if civs is None:
-            civs = [17] * len(names)
-
-        if isinstance(map_id, str):
-            m = map_id.lower()
-            m = m.replace(" ", "_")
-            if m in maps.keys():
-                map_id = maps[m]  # Convert string into valid map integer
-            else:
-                raise Exception(f"Map ID {map_id} is not valid. Valid choices: {list(maps.keys())}")
-        elif isinstance(map_id, int) and map_id not in maps.values():
-            print(f"Warning! The map id given : '{map_id}' is not a standard map. This can lead to issues.")
-
-        for i in range(number_of_instances):
+        for i in range(instances):
             port = 64720 + i
-            process = self._launch(multiple=number_of_instances > 1, port=port)
+            process = self._launch(multiple=instances > 1, port=port)
             rpc_client = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", port))
             self.games.append((rpc_client, process))
 
         current_time = 0
-        self._start_all_games(names, civs, map_id)
+        self._start_all_games(names, game_settings)
         scores = [[0] * len(names)] * len(self.games)
         running_games = self.get_running_games()
         while running_games:
@@ -134,22 +167,22 @@ class Launcher:
 
             if game_time_limit > 0:
                 for i in range(len(self.games)):
-                    game_time = self.call_safe('GetGameTime', game_index=i)
+                    game_time = self.call_safe(i, 'GetGameTime')
                     if game_time is None:
                         print(f"Warning! Wasn't able to get the ingame time of game {i}. If the in-game time"
                               f"is over the limit, we can't check now.")
                     elif game_time > game_time_limit:
-                        #print(f"Time's up for game {i}!")
+                        # print(f"Time's up for game {i}!")
                         self.quit_game(i)
 
-            #print(f"Time {current_time} , Scores {scores}")
+            # print(f"Time {current_time} , Scores {scores}")
             if 0 < real_time_limit < current_time:
                 print("Real time's up!")
                 break
             running_games = self.get_running_games()
 
         self.quit_all_games()
-        #print(scores)
+        # print(scores)
         return scores
 
     def get_running_games(self) -> list:
@@ -158,7 +191,7 @@ class Launcher:
             rpc, proc = game
             if rpc is None or proc is None:
                 continue
-            if self.call_safe('GetGameInProgress', game_index=index):
+            if self.call_safe(index, 'GetGameInProgress'):
                 result.append(index)
         return result
 
@@ -191,29 +224,29 @@ class Launcher:
         windll.kernel32.CloseHandle(aoc_handle)
         return aoc_proc
 
-    def _start_all_games(self, names, civs, map_id, minimize: bool = False):
+    def _start_all_games(self, names, game_settings: GameSettings, minimize: bool = False):
         for i in range(self.number_of_games):
-            self._setup_game(i, names, civs, map_id)
+            self._setup_game(i, names, game_settings)
         for i in range(len(self.games)):
             self._start_game(i, minimize)
 
-    def _setup_game(self, game_index: int, names, civs, map_id):
-        self.call_safe('ResetGameSettings', game_index=game_index)
-        self.call_safe('SetGameMapType', map_id, game_index=game_index)
-        self.call_safe('SetGameDifficulty', 1, game_index=game_index)  # Set to hard
-        self.call_safe('SetGameRevealMap', 1, game_index=game_index)  # Set to standard exploration
-        self.call_safe('SetGameMapSize', 2, game_index=game_index)  # Set to medium map size
-        self.call_safe('SetRunUnfocused', True, game_index=game_index)
-        self.call_safe('SetRunFullSpeed', True, game_index=game_index)
+    def _setup_game(self, game_index: int, names, settings: GameSettings):
+        self.call_safe(game_index, 'ResetGameSettings')
+        self.call_safe(game_index, 'SetGameMapType', settings.map)
+        self.call_safe(game_index, 'SetGameDifficulty', settings.difficulty)  # Set to hard
+        self.call_safe(game_index, 'SetGameRevealMap', settings.reveal_map)  # Set to standard exploration
+        self.call_safe(game_index, 'SetGameMapSize', settings.map_size)  # Set to medium map size
+        self.call_safe(game_index, 'SetRunUnfocused', True)
+        self.call_safe(game_index, 'SetRunFullSpeed', True)
         # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
         for index, name in enumerate(names):
-            self.call_safe('SetPlayerComputer', index + 1, name, game_index=game_index)
-            self.call_safe('SetPlayerCivilization', index + 1, civs[index], game_index=game_index)
+            self.call_safe(game_index, 'SetPlayerComputer', index + 1, name)
+            self.call_safe(game_index, 'SetPlayerCivilization', index + 1, settings.civilisations[index])
 
     def _start_game(self, game_index, minimize: bool = False):
-        self.call_safe('StartGame', game_index=game_index)
+        self.call_safe(game_index, 'StartGame')
         if minimize:
-            self.call_safe('SetWindowMinimized', True, game_index=game_index)
+            self.call_safe(game_index, 'SetWindowMinimized', True)
 
     def get_scores(self, game_index: int) -> list[int]:
         """
@@ -226,13 +259,13 @@ class Launcher:
                   f"The index must be greater than zero and less than the length of the games list ({len(self.games)})")
 
         rpc_client, process = self.games[game_index]
-        if process is None or rpc_client is None or not self.call_safe('GetGameInProgress', game_index=game_index):
+        if process is None or rpc_client is None or not self.call_safe(game_index, 'GetGameInProgress'):
             print("Cannot return scores when there's no game running! Returning zeroed scores.")
             return [0] * len(self.names)
 
         scores = []
         for i in range(len(self.names)):
-            score = self.call_safe("GetPlayerScore", i + 1, game_index=game_index)
+            score = self.call_safe(game_index, "GetPlayerScore", i + i)
             if score:
                 scores.append(score)
             else:
@@ -241,7 +274,7 @@ class Launcher:
 
         return scores
 
-    def call_safe(self, method: str, param1=None, param2=None, kill_on_except: bool = True, game_index: int = 0):
+    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True,):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
         :param game_index: The index of the game
@@ -326,3 +359,9 @@ class Launcher:
                 p.terminate()
 
         self.games[game_index] = (None, None)
+
+names = ['Barbarian'] * 4
+civs = ['huns'] * 4
+game_settings = GameSettings(civs)
+l = Launcher()
+l.launch_game(names, game_settings, real_time_limit=10)
