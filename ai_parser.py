@@ -451,9 +451,6 @@ class AI:
         string = string.removeprefix("(")
         # The operator symbol, followed by the simple/complex indicator and then the index
         end = string.find(")")
-
-        result = [string[0], string[2], int(string[3:end])]
-
         index1 = int(string[3:end])
         param1 = simples[index1] if (string[2] == self.simple_indicator) else complexes[index1]
         if string[0] == self.operators['not']:
@@ -467,66 +464,6 @@ class AI:
             return Complex(name=self.operators_inverse[string[0]], param1=param1, param2=param2)
 
         raise Exception(f"{string[0]} is not a valid operator symbol!")
-
-    def rule_to_string(self, rule: tuple) -> str:
-        facts, actions = rule
-        simples, complexes = facts
-
-        simples_strings = dict()
-        for index, simple in enumerate(simples):
-            simples_strings[index] = f"({' '.join(simple)})"
-
-        todo_complexes = dict()  # The complexes that still need to be written
-        for index, complex in enumerate(complexes):
-            todo_complexes[index] = complex
-
-        done_complexes = dict()
-
-        complex_index = 0
-        while len(todo_complexes) > 0:
-            if complex_index in todo_complexes.keys():
-                # Check if its possible to write.
-                complex = todo_complexes[complex_index]
-                possible = True
-                if complex[1] == self.complex_indicator and complex[2] not in done_complexes.keys():
-                    possible = False
-                elif complex[0] != self.operators['not'] and complex[3] == self.complex_indicator and \
-                        complex[4] not in done_complexes.keys():
-                    possible = False
-
-                if possible:
-                    string = f"({self.operators_inverse[complex[0]]}\t"
-                    if complex[1] == self.simple_indicator:
-                        string += simples_strings.pop(complex[2])
-                    if complex[0] != self.operators['not']:
-                        string += "\n"
-                        if complex[3] == self.simple_indicator:
-                            string += simples_strings.pop(complex[4])
-                        else:
-                            string += done_complexes[complex[4]]
-                    string += ")"
-                    done_complexes[complex_index] = string
-                    todo_complexes.pop(complex_index)
-
-            complex_index += 1
-            if complex_index >= len(todo_complexes):
-                complex_index = 0
-
-        final_string = "(defrule \n"
-        for simple_string in simples_strings.values():
-            final_string += simple_string + "\n"
-
-        for complex_string in done_complexes.values():
-            final_string += complex_string + "\n"
-
-        final_string += "=> \n"
-
-        for action in actions:
-            final_string += f"\t({' '.join(action)})\n"
-
-        final_string += ")"
-        print(f"Writing rule {self.rules.index(rule)}")
-        return final_string
 
     def write(self, target_directory: str = None):
         destination: str = ""
