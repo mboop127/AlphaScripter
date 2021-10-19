@@ -2,7 +2,6 @@ import os
 import subprocess
 import time
 from ctypes import windll
-from typing import Union
 
 import msgpackrpc
 import psutil
@@ -82,11 +81,12 @@ victory_types = {'standard': 0, 'conquest': 1, 'relics': 4, 'time_limit': 7, 'sc
 
 
 class GameSettings:
-    def __init__(self, civilisations: list, map='arabia', map_size='medium', difficulty='hard', game_type='random_map',
-                 resources='low', reveal_map='normal', starting_age='dark', victory_type='conquest'):
+    def __init__(self, civilisations: list, map_id='arabia', map_size='medium', difficulty='hard',
+                 game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
+                 victory_type='conquest'):
 
-        self.civilisations = self.correct_civs(civilisations, default='huns')
-        self.map = self.correct_setting(map, maps, 'arabia', 'map name/type')
+        self.civilisations = self.correct_civilizations(civilisations, default='huns')
+        self.map_id = self.correct_setting(map_id, maps, 'arabia', 'map name/type')
         self.map_size = self.correct_setting(map_size, map_sizes, 'medium', 'map size')
         self.difficulty = self.correct_setting(difficulty, difficulties, 'hard', 'difficulty')
         self.game_type = self.correct_setting(game_type, game_types, 'random_map', 'game type')
@@ -94,6 +94,10 @@ class GameSettings:
         self.reveal_map = self.correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
         self.starting_age = self.correct_setting(starting_age, starting_ages, 'standard', 'starting age')
         self.victory_type = self.correct_setting(victory_type, victory_types, 'standard', 'victory type (WIP)')
+
+    @property
+    def map(self):
+        return self.map_id
 
     @staticmethod
     def correct_setting(value, possible_values: dict, default, setting_name):
@@ -105,11 +109,11 @@ class GameSettings:
         return possible_values[default]
 
     @staticmethod
-    def correct_civs(civs: list, default='huns'):
-        if not civs:
+    def correct_civilizations(civilizations: list, default='huns'):
+        if not civilizations:
             return []
         result = []
-        for civ in civs:
+        for civ in civilizations:
             if civ in all_civilisations.values():
                 result.append(civ)
             elif civ in all_civilisations.keys():
@@ -122,6 +126,7 @@ class GameSettings:
     @property
     def civs(self):
         return self.civilisations
+
 
 class Launcher:
     def __init__(self,
@@ -146,7 +151,8 @@ class Launcher:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
 
         if game_settings.civs is not None and len(game_settings.civs) != len(names):
-            raise Exception(f"The length of the civs {game_settings.civs} does not match the length of the names {names}")
+            raise Exception(
+                f"The length of the civs {game_settings.civs} does not match the length of the names {names}")
 
         for i in range(instances):
             port = 64720 + i
@@ -169,7 +175,7 @@ class Launcher:
                 for i in range(len(self.games)):
                     game_time = self.call_safe(i, 'GetGameTime')
                     if game_time is None:
-                        print(f"Warning! Wasn't able to get the ingame time of game {i}. If the in-game time"
+                        print(f"Warning! Wasn't able to get the in game time of game {i}. If the in-game time"
                               f"is over the limit, we can't check now.")
                     elif game_time > game_time_limit:
                         # print(f"Time's up for game {i}!")
@@ -214,6 +220,7 @@ class Launcher:
         windll.kernel32.WriteProcessMemory(aoc_handle, remote_memory, self.dll_path, len(self.dll_path), 0)
 
         # load the dll from the remote process
+        # noinspection PyProtectedMember
         load_library = windll.kernel32.GetProcAddress(windll.kernel32._handle, b'LoadLibraryA')
         remote_thread = windll.kernel32.CreateRemoteThread(aoc_handle, 0, 0, load_library, remote_memory, 0, 0)
         windll.kernel32.WaitForSingleObject(remote_thread, 0xFFFFFFFF)
@@ -274,7 +281,7 @@ class Launcher:
 
         return scores
 
-    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True,):
+    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True, ):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
         :param game_index: The index of the game
@@ -354,14 +361,15 @@ class Launcher:
         if process is not None:
             try:  # Try killing the process normally
                 process.kill()
-            except:  # If that fails for whatever reason, terminate the process.
+            except BaseException:  # If that fails for whatever reason, terminate the process.
                 p: psutil.Process = psutil.Process(process.pid)
                 p.terminate()
 
         self.games[game_index] = (None, None)
 
-names = ['Barbarian'] * 4
-civs = ['huns'] * 4
-game_settings = GameSettings(civs)
-l = Launcher()
-l.launch_game(names, game_settings, real_time_limit=10)
+
+# n = ['Barbarian'] * 4
+# c = ['huns'] * 4
+# gs = GameSettings(c)
+# launcher = Launcher()
+# launcher.launch_game(n, gs, real_time_limit=10)
