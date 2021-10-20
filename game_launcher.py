@@ -92,8 +92,8 @@ class GameSettings:
         self.game_type = self.correct_setting(game_type, game_types, 'random_map', 'game type')
         self.resources = self.correct_setting(resources, starting_resources, 'standard', 'starting resources')
         self.reveal_map = self.correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
-        self.starting_age = self.correct_setting(starting_age, starting_ages, 'standard', 'starting age')
-        self.victory_type = self.correct_setting(victory_type, victory_types, 'standard', 'victory type (WIP)')
+        self.starting_age = self.correct_setting(starting_age, starting_ages, 'explored', 'starting age')
+        self.victory_type = self.correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
 
     @property
     def map(self):

@@ -2,7 +2,6 @@ import os
 import re
 import pickle
 from dataclasses import dataclass, field
-import ai_parser
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -116,6 +115,7 @@ class FactBase:
 class Simple(FactBase):
     params: list
     length: int
+    relevant_length: int
 
     def __init__(self, params, *args):
         if isinstance(params, str):
@@ -129,7 +129,8 @@ class Simple(FactBase):
             self.params = self.__get_params(list(params)[1:])
 
         if self.params:
-            self.length = len(params)
+            self.length = self.relevant_length = len(params)
+
         self.depth = 0
 
     @staticmethod
@@ -146,7 +147,7 @@ class Simple(FactBase):
     def __str__(self):
         string = f"({self.name} "
         if self.params:
-            string += ' '.join(self.params)
+            string += ' '.join(self.params[:self.relevant_length])
 
         return string + ")"
 
@@ -183,24 +184,57 @@ class Complex(FactBase):
 @dataclass
 class Rule:
     facts: list[FactBase]
-    actions: list
+    primary_facts: list[FactBase]
+    actions: list[Simple]
+    actions_length: int
+    comment_unused: bool  # If this is True, during printing, this rule will comment out the 'unused' actions and facts
 
-    def __init__(self, facts: list[FactBase], actions: list):
+    def __init__(self, facts: list[FactBase], actions: list, facts_length: int = None, actions_length: int = None,
+                 comment_unused: bool = False):
         if not facts:
             raise Exception("Cannot create a rule without any facts!")
         elif not actions:
             raise Exception("Cannot create a rule without any actions!")
+
         self.facts = facts
+        self.primary_facts = self.get_facts(depth=0)
         self.actions = actions
+
+        if facts_length is not None and facts_length < 0:
+            print(f"Warning! Facts length cannot be smaller than zero. Defaulting to None.")
+            facts_length = None
+
+        if actions_length is not None and (actions_length < 0 or actions_length > 4):
+            print(f"Warning! Action length cannot be smaller than zero or greater than 4.")
+            actions_length = None
+
+        self.facts_length = facts_length if facts_length is not None else len(self.facts)
+        self.actions_length = actions_length if actions_length is not None else len(self.actions)
+        self.comment_unused = comment_unused
+
+    def get_facts(self, depth: int = None):
+        if depth is None:
+            return self.facts[:]
+        elif depth == 1:
+            return self.primary_facts[:]
+        return [fact for fact in self.facts if fact.depth == depth]
 
     def __str__(self):
         string = "(defrule\n"
-        for fact in self.facts:
-            if fact.depth == 0:
-                string += "\t" + str(fact) + "\n"
-        string += "=>\n"
-        for action in self.actions:
-            string += "\t" + str(action) + "\n"
+
+        if self.comment_unused:
+            for index, fact in enumerate(self.facts):
+                string += f"{index:{';' if index >= self.facts_length else ''}\t}{fact}\n"
+            string += "=>\n"
+            for index, action in enumerate(self.actions):
+                string += f"{index:{';' if index >= self.actions_length else ''}\t}{action}\n"
+        else:
+            for fact in self.primary_facts[:self.facts_length]:
+                string += f"\t{fact}\n"
+            string += "=>\n"
+            for action in self.actions[:self.actions_length]:
+                string += f"\t{action}\n"
+
         string += ")"
         return string
 
@@ -460,7 +494,7 @@ class AI:
             start = string.rfind("(")
             end = string.rfind(")")
             index2 = int(string[7:end])
-            param2 = simples[index2] if (string[start+1] == self.simple_indicator) else complexes[index2]
+            param2 = simples[index2] if (string[start + 1] == self.simple_indicator) else complexes[index2]
             return Complex(name=self.operators_inverse[string[0]], param1=param1, param2=param2)
 
         raise Exception(f"{string[0]} is not a valid operator symbol!")
@@ -483,9 +517,8 @@ class AI:
             for rule in self.rules:
                 file.write(str(rule) + "\n\n")
 
-
-ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
-example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
-ai = AIParser.read_single(example_path)
-ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter")
+# ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
+# example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
+# ai = AIParser.read_single(example_path)
+# ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter")
 # names = {"parent", "a", "b", "c", "d", "e", "f"}
