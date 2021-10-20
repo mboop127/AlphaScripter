@@ -339,8 +339,8 @@ class Launcher:
             else:
                 return rpc_client.call(method)
 
-        except msgpackrpc.error.TimeoutError:
-            print("Request to game timed out.")
+        except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
+            print(f"Request to game timed out because of {e}.")
             if kill_on_except:
                 self.kill_game(game_index)
             return None
@@ -370,8 +370,8 @@ class Launcher:
                         process.kill()
                     self.games[game_index] = (None, None)
 
-            except msgpackrpc.error.TimeoutError:
-                print("Quitting to main menu failed.")
+            except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
+                print(f"Quitting to main menu failed because of {e}. ")
                 if force_kill_on_fail:
                     self.kill_game(game_index=game_index)
 
@@ -384,8 +384,8 @@ class Launcher:
         if rpc_client is not None:
             try:
                 rpc_client.close()
-            except msgpackrpc.error.TimeoutError:
-                print("Game not responding. Closing game failed.")
+            except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
+                print(f"Game not responding. Closing game failed because of {e}.")
 
         if process is not None:
             try:  # Try killing the process normally
@@ -397,7 +397,7 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 
-#n = ['Barbarian'] * 4
-#gs = GameSettings(civilisations=['huns']*4)
-#launcher = Launcher()
-#launcher.launch_game(n, gs)
+n = ['Barbarian'] * 4
+gs = GameSettings(civilisations=['huns']*4)
+launcher = Launcher()
+launcher.launch_game(n, gs, instances=3, game_time_limit=1000)
