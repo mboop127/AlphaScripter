@@ -245,6 +245,7 @@ class Launcher:
         self.call_safe(game_index, 'SetGameMapSize', settings.map_size)  # Set to medium map size
         self.call_safe(game_index, 'SetRunUnfocused', True)
         self.call_safe(game_index, 'SetRunFullSpeed', True)
+        self.call_safe('SetGameVictoryType', 1, game_index=game_index)
         # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
         for index, name in enumerate(names):
             self.call_safe(game_index, 'SetPlayerComputer', index + 1, name)
