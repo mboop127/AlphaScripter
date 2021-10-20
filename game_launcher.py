@@ -94,6 +94,7 @@ class GameSettings:
         self.reveal_map = self.correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
         self.starting_age = self.correct_setting(starting_age, starting_ages, 'explored', 'starting age')
         self.victory_type = self.correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
+        self.victory_value = 0  # TODO: Make this work.
 
     @property
     def map(self):
@@ -136,6 +137,8 @@ class Launcher:
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
         self.names = None
         self.games: list[tuple[msgpackrpc.Client, subprocess.Popen]] = []
+        self.running_games = [False] * self.number_of_games
+        self.running_games_update_flag = True
 
     @property
     def number_of_games(self):
@@ -163,14 +166,14 @@ class Launcher:
         current_time = 0
         self._start_all_games(names, game_settings)
         scores = [[0] * len(names)] * len(self.games)
-        running_games = self.get_running_games()
-        while running_games:
+        end_times = [0] * self.number_of_games
+
+        time.sleep(5)
+
+        any_game_running = True
+        while any_game_running:
             time.sleep(1)
             current_time += 1
-
-            for running_game_index in running_games:
-                scores[running_game_index] = self.get_scores(running_game_index)
-
             if game_time_limit > 0:
                 for i in range(len(self.games)):
                     game_time = self.call_safe(i, 'GetGameTime')
@@ -179,27 +182,49 @@ class Launcher:
                               f"is over the limit, we can't check now.")
                     elif game_time > game_time_limit:
                         # print(f"Time's up for game {i}!")
+                        end_times[i] = game_time
+                        scores[i] = self.get_scores(i)
                         self.quit_game(i)
-
             # print(f"Time {current_time} , Scores {scores}")
             if 0 < real_time_limit < current_time:
                 print("Real time's up!")
                 break
-            running_games = self.get_running_games()
 
+            self.running_games_update_flag = True
+            self.update_running_games()
+            any_game_running = any(self.get_running_games())
+
+        # If there are games for which we don't yet have a score, collect them.
+        for index, score in enumerate(scores):
+            if max(score) == 0:
+                scores[index] = self.get_scores(index)
+
+        for index, end_time in enumerate(end_times):
+            if end_time == 0:
+                end_times[index] = self.call_safe(index, 'GetGameTime')
+
+        print(scores)
+        print(end_times)
         self.quit_all_games()
-        # print(scores)
         return scores
 
-    def get_running_games(self) -> list:
-        result = []
+    def is_game_running(self, index):
+        return self.running_games[index]
+
+    def get_running_games(self):
+        if self.running_games_update_flag:
+            self.update_running_games()
+        return self.running_games
+
+    def update_running_games(self) -> list:
+        self.running_games = [False] * self.number_of_games
         for index, game in enumerate(self.games):
             rpc, proc = game
             if rpc is None or proc is None:
-                continue
-            if self.call_safe(index, 'GetGameInProgress'):
-                result.append(index)
-        return result
+                self.running_games[index] = False
+            else:
+                self.running_games[index] = self.call_safe(index, 'GetGameInProgress')
+        self.running_games_update_flag = False
 
     def _launch(self, multiple: bool = False, port: int = 64720) -> subprocess.Popen:
         # kill any previous aoc processes
@@ -232,6 +257,7 @@ class Launcher:
         return aoc_proc
 
     def _start_all_games(self, names, game_settings: GameSettings, minimize: bool = False):
+        print("Starting all games.")
         for i in range(self.number_of_games):
             self._setup_game(i, names, game_settings)
         for i in range(len(self.games)):
@@ -243,13 +269,14 @@ class Launcher:
         self.call_safe(game_index, 'SetGameDifficulty', settings.difficulty)  # Set to hard
         self.call_safe(game_index, 'SetGameRevealMap', settings.reveal_map)  # Set to standard exploration
         self.call_safe(game_index, 'SetGameMapSize', settings.map_size)  # Set to medium map size
-        self.call_safe(game_index, 'SetGameVictoryType', settings.victory_type)
+        self.call_safe(game_index, 'SetGameVictoryType', settings.victory_type, settings.victory_value)
         self.call_safe(game_index, 'SetRunUnfocused', True)
         self.call_safe(game_index, 'SetRunFullSpeed', True)
         # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
         for index, name in enumerate(names):
             self.call_safe(game_index, 'SetPlayerComputer', index + 1, name)
             self.call_safe(game_index, 'SetPlayerCivilization', index + 1, settings.civilisations[index])
+            self.call_safe(game_index, 'SetPlayerTeam', index + 1, 0)
 
     def _start_game(self, game_index, minimize: bool = False):
         self.call_safe(game_index, 'StartGame')
@@ -267,14 +294,14 @@ class Launcher:
                   f"The index must be greater than zero and less than the length of the games list ({len(self.games)})")
 
         rpc_client, process = self.games[game_index]
-        if process is None or rpc_client is None or not self.call_safe(game_index, 'GetGameInProgress'):
+        if process is None or rpc_client is None:
             print("Cannot return scores when there's no game running! Returning zeroed scores.")
             return [0] * len(self.names)
 
         scores = []
         for i in range(len(self.names)):
-            score = self.call_safe(game_index, "GetPlayerScore", i + i)
-            if score:
+            score = self.call_safe(game_index, "GetPlayerScore", i + 1)
+            if score is not None:
                 scores.append(score)
             else:
                 scores.append(0)
@@ -319,6 +346,7 @@ class Launcher:
             return None
 
     def quit_all_games(self, quit_program: bool = True, force_kill_on_fail: bool = True):
+        print("Quitting all games.")
         for i in self.get_running_games():
             self.quit_game(game_index=i, quit_program=quit_program, force_kill_on_fail=force_kill_on_fail)
 
@@ -369,8 +397,7 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 
-# n = ['Barbarian'] * 4
-# c = ['huns'] * 4
-# gs = GameSettings(c)
-# launcher = Launcher()
-# launcher.launch_game(n, gs, real_time_limit=10)
+n = ['Barbarian'] * 4
+gs = GameSettings(civilisations=['huns']*4)
+launcher = Launcher()
+launcher.launch_game(n, gs)
