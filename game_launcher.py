@@ -81,7 +81,7 @@ victory_types = {'standard': 0, 'conquest': 1, 'relics': 4, 'time_limit': 7, 'sc
 
 
 class GameSettings:
-    def __init__(self, civilisations: list, map_id='arabia', map_size='medium', difficulty='hard',
+    def __init__(self, civilisations: list = None, map_id='arabia', map_size='medium', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
                  victory_type='conquest'):
 
@@ -154,8 +154,8 @@ class Launcher:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
 
         if game_settings.civs is not None and len(game_settings.civs) != len(names):
-            raise Exception(
-                f"The length of the civs {game_settings.civs} does not match the length of the names {names}")
+            for i in range(len(game_settings.civs), len(names)):
+                game_settings.civs.append('huns')
 
         for i in range(instances):
             port = 64720 + i
@@ -397,7 +397,7 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 
-n = ['Barbarian'] * 4
-gs = GameSettings(civilisations=['huns']*4)
-launcher = Launcher()
-launcher.launch_game(n, gs)
+#n = ['Barbarian'] * 4
+#gs = GameSettings(civilisations=['huns']*4)
+#launcher = Launcher()
+#launcher.launch_game(n, gs)
