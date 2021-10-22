@@ -1,3 +1,4 @@
+import asyncio
 import os
 import subprocess
 import time
@@ -139,6 +140,7 @@ class Launcher:
         self.games: list[tuple[msgpackrpc.Client, subprocess.Popen]] = []
         self.running_games = [False] * self.number_of_games
         self.running_games_update_flag = True
+        self.base_port = 64720
 
     @property
     def number_of_games(self):
@@ -148,7 +150,8 @@ class Launcher:
 
     def launch_game(self, names: list[str], game_settings: GameSettings, real_time_limit: int = 0,
                     game_time_limit: int = 0, instances: int = 1):
-        self.quit_all_games(quit_program=True)
+        if self.games:
+            self.quit_all_games(quit_program=True)
         self.names = names
         if names is None or len(names) < 2 or len(names) > 8:
             raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
@@ -157,14 +160,14 @@ class Launcher:
             for i in range(len(game_settings.civs), len(names)):
                 game_settings.civs.append('huns')
 
-        for i in range(instances):
-            port = 64720 + i
-            process = self._launch(multiple=instances > 1, port=port)
-            rpc_client = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", port))
-            self.games.append((rpc_client, process))
+        processes = asyncio.run(self._launch_games(instances=instances), debug=True)
+        time.sleep(5.0)  # Make sure all games are launched.
+        self._setup_rpc_clients(processes=processes)  # Setup the RPC Clients
+        _ = asyncio.run(self._apply_games_settings(settings=game_settings), debug=True)  # Apply settings to the games
+        time.sleep(2)
+        _ = asyncio.run(self._start_games())
 
         current_time = 0
-        self._start_all_games(names, game_settings)
         scores = [[0] * len(names)] * len(self.games)
         end_times = [0] * self.number_of_games
 
@@ -208,25 +211,16 @@ class Launcher:
         self.quit_all_games()
         return scores
 
-    def is_game_running(self, index):
-        return self.running_games[index]
+    async def _launch_games(self, instances: int = 1) -> list[subprocess.Popen]:
+        tasks = []
+        multiple = instances > 1
+        for i in range(instances):
+            port = self.base_port + i
+            t = asyncio.create_task(coro=self._launch_single_game(multiple=multiple, port=port), name=f"GameLaunch{i}")
+            tasks.append(t)
+        return await asyncio.gather(*tasks)
 
-    def get_running_games(self):
-        if self.running_games_update_flag:
-            self.update_running_games()
-        return self.running_games
-
-    def update_running_games(self) -> list:
-        self.running_games = [False] * self.number_of_games
-        for index, game in enumerate(self.games):
-            rpc, proc = game
-            if rpc is None or proc is None:
-                self.running_games[index] = False
-            else:
-                self.running_games[index] = self.call_safe(index, 'GetGameInProgress')
-        self.running_games_update_flag = False
-
-    def _launch(self, multiple: bool = False, port: int = 64720) -> subprocess.Popen:
+    async def _launch_single_game(self, multiple: bool, port: int) -> subprocess.Popen:
         # kill any previous aoc processes
         # aoc_procs = [proc for proc in psutil.process_iter() if proc.name() == self.aoc_name]
         # for aoc_proc in aoc_procs: aoc_proc.kill()
@@ -256,14 +250,19 @@ class Launcher:
         windll.kernel32.CloseHandle(aoc_handle)
         return aoc_proc
 
-    def _start_all_games(self, names, game_settings: GameSettings, minimize: bool = False):
-        print("Starting all games.")
-        for i in range(self.number_of_games):
-            self._setup_game(i, names, game_settings)
-        for i in range(len(self.games)):
-            self._start_game(i, minimize)
+    def _setup_rpc_clients(self, processes):
+        for index, process in enumerate(processes):
+            rpc_client = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", self.base_port + index))
+            self.games.append((rpc_client, process))
 
-    def _setup_game(self, game_index: int, names, settings: GameSettings):
+    async def _apply_games_settings(self, settings: GameSettings):
+        tasks = []
+        for i in range(self.number_of_games):
+            t = asyncio.create_task(coro=self._apply_single_game_settings(i, settings), name=f"ApplyGameSettings{i}")
+            tasks.append(t)
+        return await asyncio.gather(*tasks)
+
+    async def _apply_single_game_settings(self, game_index: int, settings: GameSettings):
         self.call_safe(game_index, 'ResetGameSettings')
         self.call_safe(game_index, 'SetGameMapType', settings.map)
         self.call_safe(game_index, 'SetGameDifficulty', settings.difficulty)  # Set to hard
@@ -273,15 +272,44 @@ class Launcher:
         self.call_safe(game_index, 'SetRunUnfocused', True)
         self.call_safe(game_index, 'SetRunFullSpeed', True)
         # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
-        for index, name in enumerate(names):
+        for index, name in enumerate(self.names):
             self.call_safe(game_index, 'SetPlayerComputer', index + 1, name)
             self.call_safe(game_index, 'SetPlayerCivilization', index + 1, settings.civilisations[index])
             self.call_safe(game_index, 'SetPlayerTeam', index + 1, 0)
+        return True
 
-    def _start_game(self, game_index, minimize: bool = False):
-        self.call_safe(game_index, 'StartGame')
-        if minimize:
-            self.call_safe(game_index, 'SetWindowMinimized', True)
+    async def _start_games(self, minimize: bool = False):
+        tasks = []
+        for i in range(self.number_of_games):
+            t = asyncio.create_task(coro=self._start_single_game(i, minimize), name=f"StartingGame{i}")
+            tasks.append(t)
+        return await asyncio.gather(*tasks)
+
+    async def _start_single_game(self, game_index: int, minimize: bool):
+        # if minimize:
+        #    self.call_safe(game_index, 'SetWindowMinimized', minimize)
+        rpc, _ = self.games[game_index]
+        rpc.call_async('StartGame')
+        #self.call_safe(game_index, 'StartGame')
+        return True
+
+    def is_game_running(self, index):
+        return self.running_games[index]
+
+    def get_running_games(self):
+        if self.running_games_update_flag:
+            self.update_running_games()
+        return self.running_games
+
+    def update_running_games(self) -> list:
+        self.running_games = [False] * self.number_of_games
+        for index, game in enumerate(self.games):
+            rpc, proc = game
+            if rpc is None or proc is None:
+                self.running_games[index] = False
+            else:
+                self.running_games[index] = self.call_safe(index, 'GetGameInProgress')
+        self.running_games_update_flag = False
 
     def get_scores(self, game_index: int) -> list[int]:
         """
@@ -309,7 +337,7 @@ class Launcher:
 
         return scores
 
-    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True, ):
+    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True):
         """
         Call a method in the autogame in a safe way, where exceptions are handled.
         :param game_index: The index of the game
@@ -339,7 +367,7 @@ class Launcher:
             else:
                 return rpc_client.call(method)
 
-        except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
+        except BaseException as e:
             print(f"Request to game timed out because of {e}.")
             if kill_on_except:
                 self.kill_game(game_index)
