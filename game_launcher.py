@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 from ctypes import windll
+import datetime
 
 import msgpackrpc
 import psutil
@@ -167,6 +168,16 @@ class Launcher:
         time.sleep(2)
         _ = asyncio.run(self._start_games())
 
+        any_game_running = True
+        self.running_games = [True] * self.number_of_games
+        while any_game_running:
+            self.running_games = asyncio.run(self._get_running_games(prev=self.running_games))
+            print(f"({datetime.datetime.now()}) : {self.running_games}")
+            time.sleep(1)
+            any_game_running = any(self.running_games)
+
+        return
+
         current_time = 0
         scores = [[0] * len(names)] * len(self.games)
         end_times = [0] * self.number_of_games
@@ -293,23 +304,22 @@ class Launcher:
         #self.call_safe(game_index, 'StartGame')
         return True
 
-    def is_game_running(self, index):
-        return self.running_games[index]
+    async def _get_running_game_single(self, game_index: int):
+        is_running = self.call_safe(game_index, 'GetGameInProgress')
+        return is_running
 
-    def get_running_games(self):
-        if self.running_games_update_flag:
-            self.update_running_games()
-        return self.running_games
-
-    def update_running_games(self) -> list:
-        self.running_games = [False] * self.number_of_games
-        for index, game in enumerate(self.games):
-            rpc, proc = game
-            if rpc is None or proc is None:
-                self.running_games[index] = False
-            else:
-                self.running_games[index] = self.call_safe(index, 'GetGameInProgress')
-        self.running_games_update_flag = False
+    async def _get_running_games(self, prev):
+        tasks = []
+        indexes_to_check = [index for index, value in enumerate(prev) if value]
+        for i in indexes_to_check:
+            t = asyncio.create_task(coro=self._get_running_game_single(i), name=f"GetRunningGame{i}")
+            tasks.append(t)
+        temp = await asyncio.gather(*tasks)
+        result = [False] * self.number_of_games
+        for temp_index, value in enumerate(temp):
+            real_index = indexes_to_check[temp_index]
+            result[real_index] = value
+        return result
 
     def get_scores(self, game_index: int) -> list[int]:
         """
@@ -425,7 +435,7 @@ class Launcher:
         self.games[game_index] = (None, None)
 
 
-n = ['Barbarian'] * 4
-gs = GameSettings(civilisations=['huns']*4)
+n = ['Barbarian'] * 2
+gs = GameSettings(civilisations=['huns']*2, map_size='tiny')
 launcher = Launcher()
-launcher.launch_game(n, gs, instances=3, game_time_limit=1000)
+launcher.launch_game(n, gs, instances=3)
