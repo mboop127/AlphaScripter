@@ -99,7 +99,7 @@ class GameStatus(enum.Enum):
 class GameSettings:
     def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='medium', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
-                 victory_type='conquest'):
+                 victory_type='conquest', game_time_limit=0):
 
         self.names = names
         self.civilisations = self.correct_civilizations(civilisations, default='huns')
@@ -112,6 +112,7 @@ class GameSettings:
         self.starting_age = self.correct_setting(starting_age, starting_ages, 'explored', 'starting age')
         self.victory_type = self.correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
         self.victory_value = 0  # TODO: Make this work.
+        self.game_time_limit = game_time_limit
 
     @property
     def map(self):
@@ -268,7 +269,9 @@ class Game:
                       f"Closing the RPC client and killing process.")
                 self.handle_except(e)
 
-            if not is_running:
+            over_time = 0 < self._settings.game_time_limit < game_time
+
+            if not is_running or over_time:
                 scores = []
                 for index, name in enumerate(self._settings.names):
                     try:
@@ -336,7 +339,7 @@ class Launcher:
     def running_games(self):
         return [game for game in self.games if game.status == GameStatus.RUNNING]
 
-    def launch_games(self, instances: int = 1, game_time_limit: int = 0):
+    def launch_games(self, instances: int = 1):
         self.games = [Game(f"Game#{i + 1}") for i in range(instances)]
         asyncio.run(self._launch_games(), debug=True)
         time.sleep(5.0)  # Make sure all games are launched.
@@ -397,6 +400,7 @@ class Launcher:
 
 
 n = ['Barbarian'] * 2
-gs = GameSettings(names=n, civilisations=['huns'], map_size='tiny')
+civ = ['huns'] * 2
+gs = GameSettings(names=n, civilisations=['huns'], map_size='tiny', game_time_limit=2000)
 launcher = Launcher(settings=gs)
 launcher.launch_games(instances=3)
