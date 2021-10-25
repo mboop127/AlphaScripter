@@ -171,9 +171,10 @@ class Game:
     _port: int = 0
     stats: GameStats = None
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, debug: bool = False):
         self.name = name
         self.status = GameStatus.INIT
+        self.debug = debug
 
     async def launch_process(self, executable_path: str, dll_path: str, multiple: bool, port: int) -> subprocess.Popen:
         if self.status != GameStatus.INIT:
@@ -205,7 +206,7 @@ class Game:
         return aoc_proc
 
     def setup_rpc_client(self, custom_port: int = 0) -> msgpackrpc.Client:
-        if self.status != GameStatus.LAUNCHED:
+        if self.debug and self.status != GameStatus.LAUNCHED:
             print(f"Warning! Game {self.name} does have the status {GameStatus.LAUNCHED}. Setting up the RPC client"
                   f" is probably not a good idea!")
 
@@ -215,7 +216,7 @@ class Game:
         return self._rpc
 
     async def apply_settings(self, settings: GameSettings):
-        if self.status != GameStatus.CONNECTED:
+        if self.debug and self.status != GameStatus.CONNECTED:
             print(f"Warning! Status of game {self.name} is not {GameStatus.CONNECTED}. It might not be a good time"
                   f" to setup the game...")
 
@@ -235,22 +236,23 @@ class Game:
                 self._rpc.call_async('SetPlayerCivilization', index + 1, settings.civilisations[index])
                 self._rpc.call_async('SetPlayerTeam', index + 1, 0)
         except BaseException as e:
-            print(f"Warning! Game Settings could not be applied to game {self.name} because of exception {e}."
-                  f" The rpc client will be closed and the game process will be terminated.")
-            self.handle_except(e)
+            message = f"Warning! Game Settings could not be applied to game {self.name} because of exception {e}" \
+                      f" The rpc client will be closed and the game process will be terminated."
+            self.handle_except(e, message)
         self.status = GameStatus.SETUP
 
     async def start_game(self):
-        if self.status != GameStatus.SETUP:
+        if self.debug and self.status != GameStatus.SETUP:
             print(f"Warning! Game {self.name} has not the status {GameStatus.SETUP}. It might not be a good idea to"
                   f" try and start this game...")
         try:
             self._rpc.call('StartGame')
-            print(f"Game {self.name} launched.")
+            if self.debug:
+                print(f"Game {self.name} launched.")
         except BaseException as e:
-            print(f"Could not start game {self.name} because it has excepted with exception {e}. "
-                  f"The game will be ended and the process killed.")
-            self.handle_except(e)
+            message = f"Could not start game {self.name} because it has excepted with exception {e}. " \
+                        f"The game will be ended and the process killed."
+            self.handle_except(e, message)
         self.status = GameStatus.RUNNING
 
     async def update(self) -> bool:
@@ -265,9 +267,9 @@ class Game:
             try:
                 game_time = self._rpc.call('GetGameTime')
             except BaseException as e:
-                print(f"Couldn't get game time for game {self.name} because of {e}. "
-                      f"Closing the RPC client and killing process.")
-                self.handle_except(e)
+                message = f"Couldn't get game time for game {self.name} because of {e}. " \
+                          f"Closing the RPC client and killing process."
+                self.handle_except(e, message)
 
             over_time = 0 < self._settings.game_time_limit < game_time
 
@@ -280,21 +282,25 @@ class Game:
                             scores.append(score)
                         else:
                             scores.append(0)
-                            print(f"Couldn't get score for player {index + 1}. Setting this score to 0")
+                            if self.debug:
+                                print(f"Couldn't get score for player {index + 1}. Setting this score to 0")
                     except BaseException as e:
-                        print(f"Score for player {index + 1} in game {self.name} couldn't be retrieved because of {e}. "
-                              f"Setting this players' score to 0.")
+                        message = f"Score for player {index + 1} in game {self.name} couldn't be retrieved because " \
+                                  f"of {e}. Setting this players' score to 0."
                         scores.append(0)
-                        self.handle_except(e)
+                        self.handle_except(e, message)
                 self.stats = GameStats(scores, game_time)
                 self.kill()
 
         except BaseException as e:
-            print(f"Warning! Game {self.name} could not be updated because of exception {e}.")
-            self.handle_except(e)
+            message = f"Warning! Game {self.name} could not be updated because of exception {e}."
+            self.handle_except(e, message)
 
-    def handle_except(self, exception):
-        print(f"Exception {exception} occurred on game {self.name}. Killing the process and closing the rpc client.")
+    def handle_except(self, exception, extra_message: str = None):
+        if self.debug:
+            if extra_message:
+                print(extra_message)
+            print(f"Exception {exception} occurred on game {self.name}. Killing the process and closing the rpc client.")
         self.kill()  # Important to do before setting the Excepted state!
         self.status = GameStatus.EXCEPTED
 
@@ -317,13 +323,15 @@ class Game:
 class Launcher:
     def __init__(self,
                  settings: GameSettings,
-                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
+                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe",
+                 debug: bool = False):
         self.executable_path = executable_path
         self.directory, self.aoc_name = os.path.split(executable_path)
         self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
         self.games: list[Game] = None
         self.base_port = 64720
         self.settings = settings
+        self.debug = debug
 
     @property
     def names(self):
@@ -340,18 +348,19 @@ class Launcher:
         return [game for game in self.games if game.status == GameStatus.RUNNING]
 
     def launch_games(self, instances: int = 1):
-        self.games = [Game(f"Game#{i + 1}") for i in range(instances)]
-        asyncio.run(self._launch_games(), debug=True)
+        self.games = [Game(f"Game#{i + 1}", self.debug) for i in range(instances)]
+        asyncio.run(self._launch_games(), debug=self.debug)
         time.sleep(5.0)  # Make sure all games are launched.
         self._setup_rpc_clients()
-        asyncio.run(self._apply_games_settings(settings=self.settings), debug=True)  # Apply settings to the games
+        asyncio.run(self._apply_games_settings(settings=self.settings), debug=self.debug)  # Apply settings to the games
         time.sleep(2)
         asyncio.run(self._start_games())
 
         any_game_running = True
         while any_game_running:
             asyncio.run(self.update_games())
-            print(f"({datetime.datetime.now()}) : {self.running_games}")
+            if self.debug:
+                print(f"({datetime.datetime.now()}) : {self.running_games}")
             time.sleep(1)
             any_game_running = len(self.running_games) > 0
 
