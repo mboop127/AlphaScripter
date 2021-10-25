@@ -1,9 +1,11 @@
 import asyncio
+import enum
 import os
 import subprocess
 import time
 from ctypes import windll
 import datetime
+from dataclasses import dataclass
 
 import msgpackrpc
 import psutil
@@ -82,11 +84,24 @@ starting_ages = {'standard': 0, 'dark': 2, 'feudal': 3, 'castle': 4, 'imperial':
 victory_types = {'standard': 0, 'conquest': 1, 'relics': 4, 'time_limit': 7, 'score': 8}
 
 
+class GameStatus(enum.Enum):
+    NONE = "No status yet."  # If we read this there is probably something wrong.
+    INIT = "Initialized"  # This means no process has been launched, no RPC client has been launched or anything.
+    LAUNCHED = "Game process launched."  # The process exists, but not RPC client has been launched and connected.
+    CONNECTED = "RPC Client connected."  # The process and RPC client exist, but the game is still in the main menu.
+    SETUP = "Game settings have been applied."  # The game has applied settings.
+    RUNNING = "Game is running"  # The game is just running.
+    ENDED = "Game is no longer running."  # The game has ended and we are in the main menu.
+    QUIT = "Game has been quit and process killed."
+    EXCEPTED = "This game has encountered an error and is therefore terminated."
+
+
 class GameSettings:
-    def __init__(self, civilisations: list = None, map_id='arabia', map_size='medium', difficulty='hard',
+    def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='medium', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
                  victory_type='conquest'):
 
+        self.names = names
         self.civilisations = self.correct_civilizations(civilisations, default='huns')
         self.map_id = self.correct_setting(map_id, maps, 'arabia', 'map name/type')
         self.map_size = self.correct_setting(map_size, map_sizes, 'medium', 'map size')
@@ -111,19 +126,27 @@ class GameSettings:
         print(f"Warning! Value {value} not valid for setting {setting_name}. Defaulting to {default}.")
         return possible_values[default]
 
-    @staticmethod
-    def correct_civilizations(civilizations: list, default='huns'):
+    def correct_civilizations(self, civilizations: list, default='huns'):
         if not civilizations:
             return []
         result = []
-        for civ in civilizations:
-            if civ in all_civilisations.values():
-                result.append(civ)
-            elif civ in all_civilisations.keys():
-                result.append(all_civilisations[civ])
-            else:
-                print(f"Civ {civ} is not valid. Defaulting to {default}.")
-                result.append(default)
+
+        if len(civilizations) < len(self.names):
+            print(f"The number of civilisations provided is less than the number of names. For every player that "
+                  f"does not have a civilisation provided for it, it will default to {default}.")
+
+        for index, name in enumerate(self.names):
+            if index < len(civilizations):  # Just copy the civilisations list for as far as we can
+                civ = civilizations[index]
+                if civ in all_civilisations.values():
+                    result.append(civ)
+                elif civ in all_civilisations.keys():
+                    result.append(all_civilisations[civ])
+                else:
+                    print(f"Civ {civ} is not valid. Defaulting to {default}.")
+                    result.append(all_civilisations[default])
+            else:  # If we have a list of civs that is to short, fill up the rest with the default.
+                result.append(all_civilisations[default])
         return result
 
     @property
@@ -131,123 +154,38 @@ class GameSettings:
         return self.civilisations
 
 
-class Launcher:
-    def __init__(self,
-                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
-        self.executable_path = executable_path
-        self.directory, self.aoc_name = os.path.split(executable_path)
-        self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
-        self.names = None
-        self.games: list[tuple[msgpackrpc.Client, subprocess.Popen]] = []
-        self.running_games = [False] * self.number_of_games
-        self.running_games_update_flag = True
-        self.base_port = 64720
+@dataclass
+class GameStats:
+    scores: list[int]
+    elapsed_game_time: int
 
-    @property
-    def number_of_games(self):
-        if not self.games:
-            return 0
-        return len(self.games)
 
-    def launch_game(self, names: list[str], game_settings: GameSettings, real_time_limit: int = 0,
-                    game_time_limit: int = 0, instances: int = 1):
-        if self.games:
-            self.quit_all_games(quit_program=True)
-        self.names = names
-        if names is None or len(names) < 2 or len(names) > 8:
-            raise Exception(f"List of names {names} not valid! Expected list of a least 2 and at most 8.")
+class Game:
+    name: str = "GameWithoutName"
+    _settings: GameSettings = None
+    status: GameStatus = GameStatus.NONE
 
-        if game_settings.civs is not None and len(game_settings.civs) != len(names):
-            for i in range(len(game_settings.civs), len(names)):
-                game_settings.civs.append('huns')
+    _process: subprocess.Popen = None
+    _rpc: msgpackrpc.Client = None
+    _port: int = 0
+    stats: GameStats = None
 
-        processes = asyncio.run(self._launch_games(instances=instances), debug=True)
-        time.sleep(5.0)  # Make sure all games are launched.
-        self._setup_rpc_clients(processes=processes)  # Setup the RPC Clients
-        _ = asyncio.run(self._apply_games_settings(settings=game_settings), debug=True)  # Apply settings to the games
-        time.sleep(2)
-        _ = asyncio.run(self._start_games())
+    def __init__(self, name: str):
+        self.name = name
+        self.status = GameStatus.INIT
 
-        any_game_running = True
-        self.running_games = [True] * self.number_of_games
-        while any_game_running:
-            self.running_games = asyncio.run(self._get_running_games(prev=self.running_games))
-            print(f"({datetime.datetime.now()}) : {self.running_games}")
-            time.sleep(1)
-            any_game_running = any(self.running_games)
+    async def launch_process(self, executable_path: str, dll_path: str, multiple: bool, port: int) -> subprocess.Popen:
+        if self.status != GameStatus.INIT:
+            print(f"Warning! This game does not have the status {GameStatus.INIT} so it's probably not the right time"
+                  f" to call this launch_process method!")
 
-        return
-
-        current_time = 0
-        scores = [[0] * len(names)] * len(self.games)
-        end_times = [0] * self.number_of_games
-
-        time.sleep(5)
-
-        any_game_running = True
-        while any_game_running:
-            time.sleep(1)
-            current_time += 1
-            if game_time_limit > 0:
-                for i in range(len(self.games)):
-                    game_time = self.call_safe(i, 'GetGameTime')
-                    if game_time is None:
-                        print(f"Warning! Wasn't able to get the in game time of game {i}. If the in-game time"
-                              f"is over the limit, we can't check now.")
-                    elif game_time > game_time_limit:
-                        # print(f"Time's up for game {i}!")
-                        end_times[i] = game_time
-                        scores[i] = self.get_scores(i)
-                        self.quit_game(i)
-            # print(f"Time {current_time} , Scores {scores}")
-            if 0 < real_time_limit < current_time:
-                print("Real time's up!")
-                break
-
-            self.running_games_update_flag = True
-            self.update_running_games()
-            any_game_running = any(self.get_running_games())
-
-        # If there are games for which we don't yet have a score, collect them.
-        for index, score in enumerate(scores):
-            if max(score) == 0:
-                scores[index] = self.get_scores(index)
-
-        for index, end_time in enumerate(end_times):
-            if end_time == 0:
-                end_times[index] = self.call_safe(index, 'GetGameTime')
-
-        print(scores)
-        print(end_times)
-        self.quit_all_games()
-        return scores
-
-    async def _launch_games(self, instances: int = 1) -> list[subprocess.Popen]:
-        tasks = []
-        multiple = instances > 1
-        for i in range(instances):
-            port = self.base_port + i
-            t = asyncio.create_task(coro=self._launch_single_game(multiple=multiple, port=port), name=f"GameLaunch{i}")
-            tasks.append(t)
-        return await asyncio.gather(*tasks)
-
-    async def _launch_single_game(self, multiple: bool, port: int) -> subprocess.Popen:
-        # kill any previous aoc processes
-        # aoc_procs = [proc for proc in psutil.process_iter() if proc.name() == self.aoc_name]
-        # for aoc_proc in aoc_procs: aoc_proc.kill()
-
-        if multiple:
-            aoc_proc = subprocess.Popen(self.executable_path + " -multipleinstances -autogameport " + str(port))
-        else:
-            aoc_proc = subprocess.Popen(self.executable_path)
-
-        # to launch the rpc server with another port, it could be launched like this:
-        # aoc_proc = subprocess.Popen(aoc_path + " -autogameport 64721")
+        launch_options = f"{executable_path} {'-multipleinstances ' if multiple else ''}-autogameport {port}"
+        aoc_proc = subprocess.Popen(launch_options)
 
         # write dll path into aoc memory
         aoc_handle = windll.kernel32.OpenProcess(0x1FFFFF, False, aoc_proc.pid)  # PROCESS_ALL_ACCESS
         remote_memory = windll.kernel32.VirtualAllocEx(aoc_handle, 0, 260, 0x3000, 0x40)
-        windll.kernel32.WriteProcessMemory(aoc_handle, remote_memory, self.dll_path, len(self.dll_path), 0)
+        windll.kernel32.WriteProcessMemory(aoc_handle, remote_memory, dll_path, len(dll_path), 0)
 
         # load the dll from the remote process
         # noinspection PyProtectedMember
@@ -259,183 +197,206 @@ class Launcher:
         # clean up
         windll.kernel32.VirtualFreeEx(aoc_handle, remote_memory, 0, 0x00008000)
         windll.kernel32.CloseHandle(aoc_handle)
+
+        self._port = port
+        self._process = aoc_proc
+        self.status = GameStatus.LAUNCHED
         return aoc_proc
 
-    def _setup_rpc_clients(self, processes):
-        for index, process in enumerate(processes):
-            rpc_client = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", self.base_port + index))
-            self.games.append((rpc_client, process))
+    def setup_rpc_client(self, custom_port: int = 0) -> msgpackrpc.Client:
+        if self.status != GameStatus.LAUNCHED:
+            print(f"Warning! Game {self.name} does have the status {GameStatus.LAUNCHED}. Setting up the RPC client"
+                  f" is probably not a good idea!")
+
+        setup_port = custom_port if custom_port != 0 else self._port
+        self._rpc = msgpackrpc.Client(msgpackrpc.Address("127.0.0.1", setup_port))
+        self.status = GameStatus.CONNECTED
+        return self._rpc
+
+    async def apply_settings(self, settings: GameSettings):
+        if self.status != GameStatus.CONNECTED:
+            print(f"Warning! Status of game {self.name} is not {GameStatus.CONNECTED}. It might not be a good time"
+                  f" to setup the game...")
+
+        self._settings = settings
+        try:
+            self._rpc.call_async('ResetGameSettings')
+            self._rpc.call_async('SetGameMapType', settings.map)
+            self._rpc.call_async('SetGameDifficulty', settings.difficulty)  # Set to hard
+            self._rpc.call_async('SetGameRevealMap', settings.reveal_map)  # Set to standard exploration
+            self._rpc.call_async('SetGameMapSize', settings.map_size)  # Set to medium map size
+            self._rpc.call_async('SetGameVictoryType', settings.victory_type, settings.victory_value)
+            self._rpc.call_async('SetRunUnfocused', True)
+            self._rpc.call_async('SetRunFullSpeed', True)
+            # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
+            for index, name in enumerate(settings.names):
+                self._rpc.call_async('SetPlayerComputer', index + 1, name)
+                self._rpc.call_async('SetPlayerCivilization', index + 1, settings.civilisations[index])
+                self._rpc.call_async('SetPlayerTeam', index + 1, 0)
+        except BaseException as e:
+            print(f"Warning! Game Settings could not be applied to game {self.name} because of exception {e}."
+                  f" The rpc client will be closed and the game process will be terminated.")
+            self.handle_except(e)
+        self.status = GameStatus.SETUP
+
+    async def start_game(self):
+        if self.status != GameStatus.SETUP:
+            print(f"Warning! Game {self.name} has not the status {GameStatus.SETUP}. It might not be a good idea to"
+                  f" try and start this game...")
+        try:
+            self._rpc.call('StartGame')
+            print(f"Game {self.name} launched.")
+        except BaseException as e:
+            print(f"Could not start game {self.name} because it has excepted with exception {e}. "
+                  f"The game will be ended and the process killed.")
+            self.handle_except(e)
+        self.status = GameStatus.RUNNING
+
+    async def update(self) -> bool:
+        """
+        Check whether the game is still running and extract the scores if it isn't.
+
+        :return: Whether the game is still running.
+        """
+        try:
+            is_running = self._rpc.call('GetGameInProgress')
+            game_time = 0
+            try:
+                game_time = self._rpc.call('GetGameTime')
+            except BaseException as e:
+                print(f"Couldn't get game time for game {self.name} because of {e}. "
+                      f"Closing the RPC client and killing process.")
+                self.handle_except(e)
+
+            if not is_running:
+                scores = []
+                for index, name in enumerate(self._settings.names):
+                    try:
+                        score = self._rpc.call("GetPlayerScore", index + 1)
+                        if score is not None:
+                            scores.append(score)
+                        else:
+                            scores.append(0)
+                            print(f"Couldn't get score for player {index + 1}. Setting this score to 0")
+                    except BaseException as e:
+                        print(f"Score for player {index + 1} in game {self.name} couldn't be retrieved because of {e}. "
+                              f"Setting this players' score to 0.")
+                        scores.append(0)
+                        self.handle_except(e)
+                self.stats = GameStats(scores, game_time)
+                self.kill()
+
+        except BaseException as e:
+            print(f"Warning! Game {self.name} could not be updated because of exception {e}.")
+            self.handle_except(e)
+
+    def handle_except(self, exception):
+        print(f"Exception {exception} occurred on game {self.name}. Killing the process and closing the rpc client.")
+        self.kill()  # Important to do before setting the Excepted state!
+        self.status = GameStatus.EXCEPTED
+
+    def kill(self):
+        if self._rpc is not None:
+            self._rpc.close()
+            self._rpc = None
+        if self._process is not None:
+            self._process.kill()
+            self._process = None
+        self.status = GameStatus.QUIT
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
+
+
+class Launcher:
+    def __init__(self,
+                 settings: GameSettings,
+                 executable_path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Age2_x1\\age2_x1.exe"):
+        self.executable_path = executable_path
+        self.directory, self.aoc_name = os.path.split(executable_path)
+        self.dll_path = (os.path.join(self.directory, 'aoc-auto-game.dll')).encode('UTF-8')
+        self.games: list[Game] = None
+        self.base_port = 64720
+        self.settings = settings
+
+    @property
+    def names(self):
+        return self.settings.names
+
+    @property
+    def number_of_games(self):
+        if not self.games:
+            return 0
+        return len(self.games)
+
+    @property
+    def running_games(self):
+        return [game for game in self.games if game.status == GameStatus.RUNNING]
+
+    def launch_games(self, instances: int = 1, game_time_limit: int = 0):
+        self.games = [Game(f"Game#{i + 1}") for i in range(instances)]
+        asyncio.run(self._launch_games(), debug=True)
+        time.sleep(5.0)  # Make sure all games are launched.
+        self._setup_rpc_clients()
+        asyncio.run(self._apply_games_settings(settings=self.settings), debug=True)  # Apply settings to the games
+        time.sleep(2)
+        asyncio.run(self._start_games())
+
+        any_game_running = True
+        while any_game_running:
+            asyncio.run(self.update_games())
+            print(f"({datetime.datetime.now()}) : {self.running_games}")
+            time.sleep(1)
+            any_game_running = len(self.running_games) > 0
+
+        return self.games
+
+    async def _launch_games(self) -> list[subprocess.Popen]:
+        tasks = []
+        multiple = self.number_of_games > 1
+        for index, game in enumerate(self.games):
+            t = asyncio.create_task(
+                coro=game.launch_process
+                (
+                    executable_path=self.executable_path,
+                    dll_path=self.dll_path,
+                    multiple=multiple,
+                    port=self.base_port + index
+                ),
+                name=f"GameLaunch{index}")
+            tasks.append(t)
+        return await asyncio.gather(*tasks)
+
+    def _setup_rpc_clients(self):
+        for game in self.games:
+            game.setup_rpc_client()
 
     async def _apply_games_settings(self, settings: GameSettings):
         tasks = []
-        for i in range(self.number_of_games):
-            t = asyncio.create_task(coro=self._apply_single_game_settings(i, settings), name=f"ApplyGameSettings{i}")
+        for index, game in enumerate(self.games):
+            t = asyncio.create_task(coro=game.apply_settings(settings), name=f"ApplyGameSettings-{game.name}")
             tasks.append(t)
         return await asyncio.gather(*tasks)
 
-    async def _apply_single_game_settings(self, game_index: int, settings: GameSettings):
-        self.call_safe(game_index, 'ResetGameSettings')
-        self.call_safe(game_index, 'SetGameMapType', settings.map)
-        self.call_safe(game_index, 'SetGameDifficulty', settings.difficulty)  # Set to hard
-        self.call_safe(game_index, 'SetGameRevealMap', settings.reveal_map)  # Set to standard exploration
-        self.call_safe(game_index, 'SetGameMapSize', settings.map_size)  # Set to medium map size
-        self.call_safe(game_index, 'SetGameVictoryType', settings.victory_type, settings.victory_value)
-        self.call_safe(game_index, 'SetRunUnfocused', True)
-        self.call_safe(game_index, 'SetRunFullSpeed', True)
-        # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
-        for index, name in enumerate(self.names):
-            self.call_safe(game_index, 'SetPlayerComputer', index + 1, name)
-            self.call_safe(game_index, 'SetPlayerCivilization', index + 1, settings.civilisations[index])
-            self.call_safe(game_index, 'SetPlayerTeam', index + 1, 0)
-        return True
-
-    async def _start_games(self, minimize: bool = False):
+    async def _start_games(self):
         tasks = []
-        for i in range(self.number_of_games):
-            t = asyncio.create_task(coro=self._start_single_game(i, minimize), name=f"StartingGame{i}")
+        for index, game in enumerate(self.games):
+            t = asyncio.create_task(coro=game.start_game(), name=f"StartingGame-{game.name}")
             tasks.append(t)
         return await asyncio.gather(*tasks)
 
-    async def _start_single_game(self, game_index: int, minimize: bool):
-        # if minimize:
-        #    self.call_safe(game_index, 'SetWindowMinimized', minimize)
-        rpc, _ = self.games[game_index]
-        rpc.call_async('StartGame')
-        #self.call_safe(game_index, 'StartGame')
-        return True
-
-    async def _get_running_game_single(self, game_index: int):
-        is_running = self.call_safe(game_index, 'GetGameInProgress')
-        return is_running
-
-    async def _get_running_games(self, prev):
+    async def update_games(self):
         tasks = []
-        indexes_to_check = [index for index, value in enumerate(prev) if value]
-        for i in indexes_to_check:
-            t = asyncio.create_task(coro=self._get_running_game_single(i), name=f"GetRunningGame{i}")
+        for game in self.running_games:
+            t = asyncio.create_task(coro=game.update(), name=f"UpdateGame-{game.name}")
             tasks.append(t)
-        temp = await asyncio.gather(*tasks)
-        result = [False] * self.number_of_games
-        for temp_index, value in enumerate(temp):
-            real_index = indexes_to_check[temp_index]
-            result[real_index] = value
-        return result
-
-    def get_scores(self, game_index: int) -> list[int]:
-        """
-        Get the scores of a certain game that is currently running.
-        :param game_index: The index of the game to get the scores from.
-        :return: A list of scores, where every index represents the score of a player.
-        """
-        if game_index < 0 or game_index >= len(self.games):
-            print(f"Cannot return scores of game {game_index} because this is not a valid index."
-                  f"The index must be greater than zero and less than the length of the games list ({len(self.games)})")
-
-        rpc_client, process = self.games[game_index]
-        if process is None or rpc_client is None:
-            print("Cannot return scores when there's no game running! Returning zeroed scores.")
-            return [0] * len(self.names)
-
-        scores = []
-        for i in range(len(self.names)):
-            score = self.call_safe(game_index, "GetPlayerScore", i + 1)
-            if score is not None:
-                scores.append(score)
-            else:
-                scores.append(0)
-                print(f"Couldn't get score for player {i + 1}. Setting this score to 0")
-
-        return scores
-
-    def call_safe(self, game_index: int, method: str, param1=None, param2=None, kill_on_except: bool = True):
-        """
-        Call a method in the autogame in a safe way, where exceptions are handled.
-        :param game_index: The index of the game
-        :param method: The name of the method to call.
-        :param param1: The first parameter for the method.
-        :param param2: The second parameter for the method.
-        :param kill_on_except: Whether to kill the process if calling fails.
-        :return: The return of the method call, if available. None if exception occurs or game isn't running.
-        """
-        if not self.games:
-            return None
-
-        rpc_client, process = self.games[game_index]
-
-        if rpc_client is None or process is None:
-            print(f"Couldn't call method {method} on game {game_index} because either game process or rpc client "
-                  f"doesn't exist.")
-            if kill_on_except:
-                self.kill_game(game_index)
-            return None
-
-        try:
-            if param1 is not None and param2 is not None:
-                return rpc_client.call(method, param1, param2)
-            elif param1 is not None:
-                return rpc_client.call(method, param1)
-            else:
-                return rpc_client.call(method)
-
-        except BaseException as e:
-            print(f"Request to game timed out because of {e}.")
-            if kill_on_except:
-                self.kill_game(game_index)
-            return None
-
-    def quit_all_games(self, quit_program: bool = True, force_kill_on_fail: bool = True):
-        print("Quitting all games.")
-        for i in self.get_running_games():
-            self.quit_game(game_index=i, quit_program=quit_program, force_kill_on_fail=force_kill_on_fail)
-
-    def quit_game(self, game_index: int = 0, quit_program: bool = True, force_kill_on_fail: bool = True):
-        """
-        Quit the game to the main menu.
-        :param game_index: The index of the game that will be quit.
-        :param force_kill_on_fail: Whether to force stop the process when quitting to main menu fails.
-        :param quit_program: If True, closes the window and quits the program. Else just stays in the main menu.
-        """
-
-        rpc_client, process = self.games[game_index]
-
-        if rpc_client is not None:
-            try:
-                rpc_client.call("QuitGame")
-                time.sleep(1.0)
-                if quit_program:
-                    rpc_client.close()
-                    if process is not None:
-                        process.kill()
-                    self.games[game_index] = (None, None)
-
-            except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
-                print(f"Quitting to main menu failed because of {e}. ")
-                if force_kill_on_fail:
-                    self.kill_game(game_index=game_index)
-
-    def kill_game(self, game_index: int):
-        """
-        Kill the game forcefully. The process will be killed as well.
-        """
-        rpc_client, process = self.games[game_index]
-
-        if rpc_client is not None:
-            try:
-                rpc_client.close()
-            except (msgpackrpc.error.TimeoutError, msgpackrpc.error.TransportError) as e:
-                print(f"Game not responding. Closing game failed because of {e}.")
-
-        if process is not None:
-            try:  # Try killing the process normally
-                process.kill()
-            except BaseException:  # If that fails for whatever reason, terminate the process.
-                p: psutil.Process = psutil.Process(process.pid)
-                p.terminate()
-
-        self.games[game_index] = (None, None)
+        await asyncio.gather(*tasks)
 
 
 n = ['Barbarian'] * 2
-gs = GameSettings(civilisations=['huns']*2, map_size='tiny')
-launcher = Launcher()
-launcher.launch_game(n, gs, instances=3)
+gs = GameSettings(names=n, civilisations=['huns'], map_size='tiny')
+launcher = Launcher(settings=gs)
+launcher.launch_games(instances=3)
