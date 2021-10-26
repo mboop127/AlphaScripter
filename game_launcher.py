@@ -1,14 +1,13 @@
 import asyncio
+import datetime
 import enum
 import os
 import subprocess
 import time
 from ctypes import windll
-import datetime
 from dataclasses import dataclass
 
 import msgpackrpc
-import psutil
 
 all_civilisations = {
     "britons": 1,
@@ -128,8 +127,8 @@ class GameSettings:
         return possible_values[default]
 
     def correct_civilizations(self, civilizations: list, default='huns'):
-        if not civilizations:
-            return []
+        if civilizations is None:
+            civilizations = []
         result = []
 
         if len(civilizations) < len(self.names):
@@ -300,7 +299,7 @@ class Game:
         if self.debug:
             if extra_message:
                 print(extra_message)
-            print(f"Exception {exception} occurred on game {self.name}. Killing the process and closing the rpc client.")
+            print(f"Exception {exception} occurred on {self.name}. Killing the process and closing the rpc client.")
         self.kill()  # Important to do before setting the Excepted state!
         self.status = GameStatus.EXCEPTED
 
@@ -408,8 +407,8 @@ class Launcher:
         await asyncio.gather(*tasks)
 
 
-n = ['Barbarian'] * 2
-civ = ['huns'] * 2
-gs = GameSettings(names=n, civilisations=['huns'], map_size='tiny', game_time_limit=2000)
+ai_names = ['Barbarian', 'Barbarian', 'Barbarian']
+ai_civs = ['huns', 'celts', 'turks']
+gs = GameSettings(names=ai_names, civilisations=ai_civs, map_size='medium', game_time_limit=5000)
 launcher = Launcher(settings=gs)
 launcher.launch_games(instances=3)
