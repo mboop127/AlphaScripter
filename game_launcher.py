@@ -154,8 +154,6 @@ class GameSettings:
         return result
 
 
-
-
 @dataclass
 class GameStats:
     scores: list[int]

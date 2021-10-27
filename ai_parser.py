@@ -1,7 +1,9 @@
 import os
-import re
 import pickle
+import random
+import re
 from dataclasses import dataclass, field
+from typing import Dict
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -94,7 +96,7 @@ def inside_outer_parentheses(string: str):
 operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
 
 
-@dataclass
+@dataclass(init=True, repr=True, eq=True, order=True, frozen=False)
 class FactBase:
     name: str  # For a simple, this the name of the fact. For a Complex, this is an operator.
     depth: int = field(init=False, default=0)
@@ -110,10 +112,13 @@ class FactBase:
     def set_depth(self, value: int):
         self.depth = value
 
+    def to_string(self, comment_out: bool):
+        pass
 
-@dataclass
+
+@dataclass(init=False, repr=True, eq=True, order=True, frozen=False)
 class Simple(FactBase):
-    params: list
+    params: tuple
     length: int
     relevant_length: int
 
@@ -126,7 +131,7 @@ class Simple(FactBase):
             if len(params) > 5:
                 raise Exception("A Simple only take a name and a maximum of 4 arguments.")
             self.name = params[0]
-            self.params = self.__get_params(list(params)[1:])
+            self.params = self.__get_params(params[1:])
 
         if self.params:
             self.length = self.relevant_length = len(params)
@@ -134,28 +139,36 @@ class Simple(FactBase):
         self.depth = 0
 
     @staticmethod
-    def __get_params(params: list) -> list:
+    def __get_params(params: list) -> tuple:
         if params is None:
             return None
         # If the params passed through are a list or tuple, we just use that one.
         if isinstance(params, list) or isinstance(params, tuple) or isinstance(params, set):
             if len(params) > 4:
                 raise Exception("Cannot create Simple with more than 4 parameters!")
-            return [str(x) for x in params]
+            result = [str(x) for x in params]
+            result = tuple(result)
+            return result
         raise Exception("Arguments passed to the Simple init should be either a single list or multiple int and string")
 
+    def to_string(self, comment_out: bool = False) -> str:
+        if comment_out:
+            return ';' + self.__str__()
+        return self.__str__()
+
     def __str__(self):
-        string = f"({self.name} "
+        if self.depth == 0:
+            string = f"\t({self.name} "
+        else:
+            string = f"({self.name}"
+
         if self.params:
             string += ' '.join(self.params[:self.relevant_length])
 
         return string + ")"
 
-    def __repr__(self):
-        return self.__str__()
-
-    def __len__(self):
-        return self.length
+    def __hash__(self):
+        return hash(self.name) + hash(self.params)
 
 
 @dataclass
@@ -169,9 +182,30 @@ class Complex(FactBase):
         self.param2 = param2
         self.set_depth(0)  # Set the depths recursively
 
+    def to_string(self, comment_out: bool = False) -> str:
+        if not comment_out:
+            return self.__str__()
+
+        name_tabs = '\t' * (1 if len(self.name) > 2 else 2)
+
+        if comment_out and self.depth > 0:
+            start_string = ';('
+        elif comment_out and self.depth == 0:
+            start_string = ';\t('
+        elif not comment_out and self.depth == 0:
+            start_string = '\t('
+        else:
+            start_string = '('
+
+        result = f"{start_string}{self.name}{name_tabs}{self.param1}"
+        if self.param2:
+            tabs = '\t' * (self.param2.depth * 2 + 1)  # The plus 1 is because every rule has every line indented 1 tab
+            result += f"\n{tabs}{self.param2.to_string(comment_out)}"
+        return result + ")"
+
     def __str__(self):
         name_tabs = '\t' * (1 if len(self.name) > 2 else 2)
-        result = f"({self.name}{name_tabs}{self.param1}"
+        result = f"({self.name}{name_tabs}{self.param1}" if self.depth > 0 else f"\t({self.name}{name_tabs}{self.param1}"
         if self.param2:
             tabs = '\t' * (self.param2.depth * 2 + 1)  # The plus 1 is because every rule has every line indented 1 tab
             result += f"\n{tabs}{self.param2}"
@@ -183,60 +217,70 @@ class Complex(FactBase):
         if self.param2:
             self.param2.set_depth(value + 1)
 
+    def __hash__(self):
+        return hash(self.name) + hash(self.param1) + hash(self.param2)
 
-@dataclass
+
 class Rule:
-    facts: list[FactBase]
-    primary_facts: list[FactBase]
-    actions: list[Simple]
-    actions_length: int
+    _facts: Dict[FactBase, bool]
+    _primary_facts: list[FactBase]
+    _actions: Dict[Simple, bool]
     comment_unused: bool  # If this is True, during printing, this rule will comment out the 'unused' actions and facts
 
-    def __init__(self, facts: list[FactBase], actions: list, facts_length: int = None, actions_length: int = None,
-                 comment_unused: bool = False):
+    def __init__(self, facts: list[FactBase], actions: list[Simple], comment_unused: bool = False):
         if not facts:
             raise Exception("Cannot create a rule without any facts!")
         elif not actions:
             raise Exception("Cannot create a rule without any actions!")
 
-        self.facts = facts
-        self.primary_facts = self.get_facts(depth=0)
-        self.actions = actions
+        self._facts = dict()
+        self._actions = dict()
 
-        if facts_length is not None and facts_length < 0:
-            print(f"Warning! Facts length cannot be smaller than zero. Defaulting to None.")
-            facts_length = None
-
-        if actions_length is not None and (actions_length < 0 or actions_length > 4):
-            print(f"Warning! Action length cannot be smaller than zero or greater than 4.")
-            actions_length = None
-
-        self.facts_length = facts_length if facts_length is not None else len(self.facts)
-        self.actions_length = actions_length if actions_length is not None else len(self.actions)
+        for fact in facts:
+            self._facts[fact] = True
+        self._primary_facts = self.get_facts(depth=0)
+        for action in actions:
+            self._actions[action] = True
         self.comment_unused = comment_unused
+
+    @property
+    def actions(self):
+        return list(self._actions.keys())
+
+    @property
+    def facts(self):
+        return list(self._facts.keys())
+
+    @property
+    def primary_facts(self):
+        return self._primary_facts[:]
 
     def get_facts(self, depth: int = None):
         if depth is None:
-            return self.facts[:]
+            return self.facts
         elif depth == 1:
-            return self.primary_facts[:]
+            return self.primary_facts
         return [fact for fact in self.facts if fact.depth == depth]
 
     def __str__(self):
-        string = "(defrule\n"
+        string = "\n(defrule\n"
 
         if self.comment_unused:
-            for index, fact in enumerate(self.facts):
-                string += f"{index:{';' if index >= self.facts_length else ''}\t}{fact}\n"
+            for fact in self.primary_facts:
+                string += f"{fact.to_string(not self._facts[fact])}\n"
+
             string += "=>\n"
-            for index, action in enumerate(self.actions):
-                string += f"{index:{';' if index >= self.actions_length else ''}\t}{action}\n"
+
+            for action, write in self._actions.items():
+                string += f"{action.to_string(not write)}\n"
         else:
-            for fact in self.primary_facts[:self.facts_length]:
-                string += f"\t{fact}\n"
+            for fact in self.primary_facts:
+                if self._facts[fact]:
+                    string += f"{fact.to_string(False)}\n"
             string += "=>\n"
-            for action in self.actions[:self.actions_length]:
-                string += f"\t{action}\n"
+            for action, write in self._actions.items():
+                if write:
+                    string += f"{action.to_string(False)}\n"
 
         string += ")"
         return string
@@ -310,7 +354,7 @@ class AIParser:
         return result
 
     @staticmethod
-    def write_single(ai, target_directory, pickled: bool = True) -> bool:
+    def write_single(ai, target_directory: str, pickled: bool = True) -> bool:
         if not dir_exists(target_directory, raise_exception=True) or not isinstance(ai, AI):
             print(f"Warning! Writing AI {ai} failed.")
             return False
@@ -319,6 +363,7 @@ class AIParser:
             return True
         else:
             ai.write()
+        return True
 
 
 class AI:
@@ -338,7 +383,6 @@ class AI:
             self.operators_inverse[operator_symbol] = operator_name
 
         self.constants, self.rules = self._parse_raw_content(content=self.raw_content)
-        x = 0
 
     @staticmethod
     def __repair_path(path: str) -> str:
@@ -478,12 +522,12 @@ class AI:
         # If we find a match, we most certainly have a valid complex fact
         while match:
             s = match[0]
-            complexes.append(self.string_to_complex(s, simples, complexes))
+            complexes.append(self._string_to_complex(s, simples, complexes))
             string = string.replace(match[0], f"({self.complex_indicator}{len(complexes) - 1})")
             match = re.search(pattern, string)
         return complexes
 
-    def string_to_complex(self, string: str, simples: list, complexes: list) -> Complex:
+    def _string_to_complex(self, string: str, simples: list, complexes: list) -> Complex:
         string = string.removesuffix(")")
         string = string.removeprefix("(")
         # The operator symbol, followed by the simple/complex indicator and then the index
@@ -502,10 +546,13 @@ class AI:
 
         raise Exception(f"{string[0]} is not a valid operator symbol!")
 
-    def write(self, target_directory: str = None):
+    def write(self, target_directory: str = None, custom_name: str = None):
         destination: str = ""
         if target_directory is not None and dir_exists(target_directory, raise_exception=True):
-            destination = os.path.join(target_directory, self.name + ".per")
+            if custom_name is not None:
+                destination = os.path.join(target_directory, custom_name + ".per")
+            else:
+                destination = os.path.join(target_directory, self.name + ".per")
         elif file_exists(self.path, raise_exception=True):
             destination = self.path
         else:
@@ -520,8 +567,14 @@ class AI:
             for rule in self.rules:
                 file.write(str(rule) + "\n\n")
 
+
 # ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
-# example_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per"
-# ai = AIParser.read_single(example_path)
-# ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter")
-# names = {"parent", "a", "b", "c", "d", "e", "f"}
+example_path = "C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter\\test-read.per"
+ai = AIParser.read_single(example_path)
+for rule in ai.rules:
+    rule.comment_unused = True
+    chosen_fact = random.choice(rule.primary_facts)
+    rule._facts[chosen_fact] = False
+    chosen_action = random.choice(rule.actions)
+    print(chosen_fact.to_string(False))
+ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter", "test-write")
