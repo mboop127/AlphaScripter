@@ -153,6 +153,10 @@ class GameSettings:
                 result.append(all_civilisations[default])
         return result
 
+    def clone(self):
+        return GameSettings(self.names, self.civilisations, self.map_id, self.map_size, self.difficulty, self.game_type,
+                            self.resources, self.reveal_map, self.starting_age, self.victory_type, self.game_time_limit)
+
 
 @dataclass
 class GameStats:
@@ -279,7 +283,7 @@ class Game:
                 print(f"Game {self.name} launched.")
         except BaseException as e:
             message = f"Could not start game {self.name} because it has excepted with exception {e}. " \
-                        f"The game will be ended and the process killed."
+                      f"The game will be ended and the process killed."
             self.handle_except(e, message)
         self.status = GameStatus.RUNNING
 
@@ -385,12 +389,17 @@ class Launcher:
     def running_games(self):
         return [game for game in self.games if game.status == GameStatus.RUNNING]
 
-    def launch_games(self, instances: int = 1):
-        self.games = [Game(f"Game#{i + 1}", self.debug) for i in range(instances)]
+    def launch_games(self, instances: int = 1, round_robin: bool = False):
+        all_settings = [self.settings] * len(self.names) if not round_robin else self._apply_round_robin(self.settings)
+        if not round_robin:
+            self.games = [Game(f"Game#{i + 1}", self.debug) for i in range(instances)]
+        else:
+            self.games = [Game(f"Game#{i + 1}", self.debug) for i in range(len(all_settings))]
+
         asyncio.run(self._launch_games(), debug=self.debug)
         time.sleep(5.0)  # Make sure all games are launched.
         self._setup_rpc_clients()
-        asyncio.run(self._apply_games_settings(settings=self.settings), debug=self.debug)  # Apply settings to the games
+        asyncio.run(self._apply_games_settings(settings=all_settings), debug=self.debug)  # Apply settings to the games
         time.sleep(2)
         asyncio.run(self._start_games())
 
@@ -409,8 +418,7 @@ class Launcher:
         multiple = self.number_of_games > 1
         for index, game in enumerate(self.games):
             t = asyncio.create_task(
-                coro=game.launch_process
-                (
+                coro=game.launch_process(
                     executable_path=self.executable_path,
                     dll_path=self.dll_path,
                     multiple=multiple,
@@ -424,12 +432,25 @@ class Launcher:
         for game in self.games:
             game.setup_rpc_client()
 
-    async def _apply_games_settings(self, settings: GameSettings):
+    async def _apply_games_settings(self, settings: list[GameSettings]):
         tasks = []
         for index, game in enumerate(self.games):
-            t = asyncio.create_task(coro=game.apply_settings(settings), name=f"ApplyGameSettings-{game.name}")
+            t = asyncio.create_task(coro=game.apply_settings(settings[index]), name=f"ApplyGameSettings-{game.name}")
             tasks.append(t)
         return await asyncio.gather(*tasks)
+
+    @staticmethod
+    def _apply_round_robin(original_settings: GameSettings) -> list[GameSettings]:
+        settings = []
+        # Suppose the number of names = 5, then we want to go from 0 to (incl.) 3
+        # And for index2, we want to go from 1 to (incl.) 4
+        for index1 in range(len(original_settings.names) - 1):
+            for index2 in range(index1 + 1, len(original_settings.names)):
+                gs = original_settings.clone()
+                gs.names = [original_settings.names[index1], original_settings.names[index2]]
+                gs.civilisations = [original_settings.civilisations[index1], original_settings.civilisations[index2]]
+                settings.append(gs)
+        return settings
 
     async def _start_games(self):
         tasks = []
@@ -446,8 +467,8 @@ class Launcher:
         await asyncio.gather(*tasks)
 
 
-ai_names = ['Barbarian', 'Barbarian', 'Barbarian']
-ai_civs = ['huns', 'celts', 'turks']
-gs = GameSettings(names=ai_names, civilisations=ai_civs, map_size='medium', game_time_limit=5000)
-launcher = Launcher(settings=gs)
-launcher.launch_games(instances=3)
+ai_names = ['Barbarian', 'Barbarian', 'Barbarian', 'Barbarian']
+ai_civs = ['huns', 'celts', 'turks', 'persians']
+gs = GameSettings(names=ai_names, civilisations=ai_civs, map_size='tiny')
+launcher = Launcher(settings=gs, debug=True)
+launcher.launch_games(round_robin=True)
