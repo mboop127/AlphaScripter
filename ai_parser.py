@@ -151,6 +151,9 @@ class Simple(FactBase):
 
         return string + ")"
 
+    def __repr__(self):
+        return self.__str__()
+
     def __len__(self):
         return self.length
 

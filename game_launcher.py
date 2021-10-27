@@ -101,15 +101,15 @@ class GameSettings:
                  victory_type='conquest', game_time_limit=0):
 
         self.names = names
-        self.civilisations = self.correct_civilizations(civilisations, default='huns')
-        self.map_id = self.correct_setting(map_id, maps, 'arabia', 'map name/type')
-        self.map_size = self.correct_setting(map_size, map_sizes, 'medium', 'map size')
-        self.difficulty = self.correct_setting(difficulty, difficulties, 'hard', 'difficulty')
-        self.game_type = self.correct_setting(game_type, game_types, 'random_map', 'game type')
-        self.resources = self.correct_setting(resources, starting_resources, 'standard', 'starting resources')
-        self.reveal_map = self.correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
-        self.starting_age = self.correct_setting(starting_age, starting_ages, 'explored', 'starting age')
-        self.victory_type = self.correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
+        self.civilisations = self.__correct_civilizations(civilisations, default='huns')
+        self.map_id = self.__correct_setting(map_id, maps, 'arabia', 'map name/type')
+        self.map_size = self.__correct_setting(map_size, map_sizes, 'medium', 'map size')
+        self.difficulty = self.__correct_setting(difficulty, difficulties, 'hard', 'difficulty')
+        self.game_type = self.__correct_setting(game_type, game_types, 'random_map', 'game type')
+        self.resources = self.__correct_setting(resources, starting_resources, 'standard', 'starting resources')
+        self.reveal_map = self.__correct_setting(reveal_map, reveal_map_types, 'normal', 'reveal map')
+        self.starting_age = self.__correct_setting(starting_age, starting_ages, 'explored', 'starting age')
+        self.victory_type = self.__correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
         self.victory_value = 0  # TODO: Make this work.
         self.game_time_limit = game_time_limit
 
@@ -117,8 +117,12 @@ class GameSettings:
     def map(self):
         return self.map_id
 
+    @property
+    def civs(self):
+        return self.civilisations
+
     @staticmethod
-    def correct_setting(value, possible_values: dict, default, setting_name):
+    def __correct_setting(value, possible_values: dict, default, setting_name):
         if value in possible_values.values():
             return value
         elif value.lower() in possible_values.keys():
@@ -126,7 +130,7 @@ class GameSettings:
         print(f"Warning! Value {value} not valid for setting {setting_name}. Defaulting to {default}.")
         return possible_values[default]
 
-    def correct_civilizations(self, civilizations: list, default='huns'):
+    def __correct_civilizations(self, civilizations: list, default='huns'):
         if civilizations is None:
             civilizations = []
         result = []
@@ -149,9 +153,7 @@ class GameSettings:
                 result.append(all_civilisations[default])
         return result
 
-    @property
-    def civs(self):
-        return self.civilisations
+
 
 
 @dataclass
@@ -176,6 +178,16 @@ class Game:
         self.debug = debug
 
     async def launch_process(self, executable_path: str, dll_path: str, multiple: bool, port: int) -> subprocess.Popen:
+        """
+        Launch an instance of the game (i.e. open a new process)
+
+        :param executable_path: The path to the executable of the game.
+        :param dll_path: The path to the DLL needed to communicate with the process.
+        :param multiple: Whether multiple processes are going to be launched. Used as a required launch parameter.
+        :param port: The port on which to start this process communication channels (using the DLL)
+        :return: The process that was started of type ``subprocess.Popen``
+        """
+
         if self.status != GameStatus.INIT:
             print(f"Warning! This game does not have the status {GameStatus.INIT} so it's probably not the right time"
                   f" to call this launch_process method!")
@@ -205,6 +217,15 @@ class Game:
         return aoc_proc
 
     def setup_rpc_client(self, custom_port: int = 0) -> msgpackrpc.Client:
+        """
+        Create a RPC client to manage this game remotely.
+
+        :param custom_port: A custom port to connect to. If not specified (or set to 0 or lower), this will use the
+        port assigned automatically when creating the game process.
+
+        :return: A ``msgpackrpc.Client`` instance that is connected to the game process.
+        """
+
         if self.debug and self.status != GameStatus.LAUNCHED:
             print(f"Warning! Game {self.name} does have the status {GameStatus.LAUNCHED}. Setting up the RPC client"
                   f" is probably not a good idea!")
@@ -215,6 +236,12 @@ class Game:
         return self._rpc
 
     async def apply_settings(self, settings: GameSettings):
+        """
+        Apply game settings to this game.
+
+        :param settings: The GameSettings settings to apply.
+        """
+
         if self.debug and self.status != GameStatus.CONNECTED:
             print(f"Warning! Status of game {self.name} is not {GameStatus.CONNECTED}. It might not be a good time"
                   f" to setup the game...")
@@ -241,11 +268,15 @@ class Game:
         self.status = GameStatus.SETUP
 
     async def start_game(self):
+        """
+        Start the game.
+        """
+
         if self.debug and self.status != GameStatus.SETUP:
             print(f"Warning! Game {self.name} has not the status {GameStatus.SETUP}. It might not be a good idea to"
                   f" try and start this game...")
         try:
-            self._rpc.call('StartGame')
+            self._rpc.call('StartGame')  # self._rpc.call_async('StartGame') did not work.
             if self.debug:
                 print(f"Game {self.name} launched.")
         except BaseException as e:
@@ -256,9 +287,7 @@ class Game:
 
     async def update(self) -> bool:
         """
-        Check whether the game is still running and extract the scores if it isn't.
-
-        :return: Whether the game is still running.
+        Check whether the game is still running and extract the stats if it isn't.
         """
         try:
             is_running = self._rpc.call('GetGameInProgress')
@@ -296,6 +325,14 @@ class Game:
             self.handle_except(e, message)
 
     def handle_except(self, exception, extra_message: str = None):
+        """
+        Handle exceptions that occur during a running game by killing the process and disconnecting the RPC client.
+        Also, print debug statements if relevant.
+
+        :param exception: The exception that occurred.
+        :param extra_message: An optional extra message to print as well.
+        """
+
         if self.debug:
             if extra_message:
                 print(extra_message)
@@ -304,6 +341,10 @@ class Game:
         self.status = GameStatus.EXCEPTED
 
     def kill(self):
+        """
+        Kill the process and disconnect the RPC client.
+        """
+
         if self._rpc is not None:
             self._rpc.close()
             self._rpc = None
