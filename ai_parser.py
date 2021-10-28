@@ -91,6 +91,14 @@ def inside_outer_parentheses(string: str):
     return string[first_parenthesis_index:last_parenthesis_index]
 
 
+def clamp(value: int, min_value: int, max_value: int):
+    return max(min(value, max_value), min_value)
+
+
+def random_bool():
+    return random.random() <= 0.5
+
+
 # =========================================
 
 operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
@@ -100,6 +108,8 @@ operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
 class FactBase:
     name: str  # For a simple, this the name of the fact. For a Complex, this is an operator.
     depth: int = field(init=False, default=0)
+    parent: object = field(init=False, default=None)
+    visible: bool = field(init=False, default=True)
 
     @property
     def is_simple(self) -> bool:
@@ -112,7 +122,7 @@ class FactBase:
     def set_depth(self, value: int):
         self.depth = value
 
-    def to_string(self, comment_out: bool):
+    def to_string(self, visible: bool = False):
         pass
 
 
@@ -151,24 +161,17 @@ class Simple(FactBase):
             return result
         raise Exception("Arguments passed to the Simple init should be either a single list or multiple int and string")
 
-    def to_string(self, comment_out: bool = False) -> str:
-        if comment_out:
-            return ';' + self.__str__()
-        return self.__str__()
+    def to_string(self, visible: bool = False) -> str:
+        if visible:
+            return self.__str__()
+        return ';' + self.__str__()
 
     def __str__(self):
-        if self.depth == 0:
-            string = f"\t({self.name} "
-        else:
-            string = f"({self.name}"
-
+        string = f"\t({self.name} " if self.depth == 0 else f"({self.name} "
         if self.params:
             string += ' '.join(self.params[:self.relevant_length])
 
         return string + ")"
-
-    def __hash__(self):
-        return hash(self.name) + hash(self.params)
 
 
 @dataclass
@@ -179,20 +182,23 @@ class Complex(FactBase):
     def __init__(self, name: str, param1: FactBase, param2: FactBase = None):
         self.name = name
         self.param1 = param1
+        self.param1.parent = self
         self.param2 = param2
+        if self.param2:
+            self.param2.parent = self
         self.set_depth(0)  # Set the depths recursively
 
-    def to_string(self, comment_out: bool = False) -> str:
-        if not comment_out:
+    def to_string(self, visible: bool = False) -> str:
+        if visible:
             return self.__str__()
 
         name_tabs = '\t' * (1 if len(self.name) > 2 else 2)
 
-        if comment_out and self.depth > 0:
+        if not visible and self.depth > 0:
             start_string = ';('
-        elif comment_out and self.depth == 0:
+        elif not visible and self.depth == 0:
             start_string = ';\t('
-        elif not comment_out and self.depth == 0:
+        elif visible and self.depth == 0:
             start_string = '\t('
         else:
             start_string = '('
@@ -200,7 +206,7 @@ class Complex(FactBase):
         result = f"{start_string}{self.name}{name_tabs}{self.param1}"
         if self.param2:
             tabs = '\t' * (self.param2.depth * 2 + 1)  # The plus 1 is because every rule has every line indented 1 tab
-            result += f"\n{tabs}{self.param2.to_string(comment_out)}"
+            result += f"\n{tabs}{self.param2.to_string(visible)}"
         return result + ")"
 
     def __str__(self):
@@ -217,14 +223,10 @@ class Complex(FactBase):
         if self.param2:
             self.param2.set_depth(value + 1)
 
-    def __hash__(self):
-        return hash(self.name) + hash(self.param1) + hash(self.param2)
-
 
 class Rule:
-    _facts: Dict[FactBase, bool]
-    _primary_facts: list[FactBase]
-    _actions: Dict[Simple, bool]
+    facts: list[FactBase]
+    actions: list[FactBase]
     comment_unused: bool  # If this is True, during printing, this rule will comment out the 'unused' actions and facts
 
     def __init__(self, facts: list[FactBase], actions: list[Simple], comment_unused: bool = False):
@@ -233,137 +235,79 @@ class Rule:
         elif not actions:
             raise Exception("Cannot create a rule without any actions!")
 
-        self._facts = dict()
-        self._actions = dict()
-
-        for fact in facts:
-            self._facts[fact] = True
-        self._primary_facts = self.get_facts(depth=0)
-        for action in actions:
-            self._actions[action] = True
+        self.facts = facts[:]
+        self.actions = actions[:]
         self.comment_unused = comment_unused
 
     @property
-    def actions(self):
-        return list(self._actions.keys())
-
-    @property
-    def facts(self):
-        return list(self._facts.keys())
-
-    @property
     def primary_facts(self):
-        return self._primary_facts[:]
+        return self.get_facts(depth=0)
 
     def get_facts(self, depth: int = None):
         if depth is None:
             return self.facts
-        elif depth == 1:
-            return self.primary_facts
         return [fact for fact in self.facts if fact.depth == depth]
+
+    def _toggle_random_visibility(self, facts: bool, number: int):
+        list_to_use = self.primary_facts if facts else self.actions
+        number = clamp(value=number, min_value=1, max_value=len(list_to_use) - 1)
+        for r in random.choices(list_to_use, k=number):
+            r.visible = not r.visible
+
+        if not any(x.visible for x in self.facts):
+            print(f"All {'facts' if facts else 'actions'} are deactivated. Activating a random one.")
+            random_fact_or_action = random.choice(list_to_use)
+            random_fact_or_action.visible = True
+
+    def toggle_random_facts_visibility(self, number: int = 1):
+        self._toggle_random_visibility(facts=True, number=number)
+
+    def toggle_random_actions_visibility(self, number: int = 1):
+        self._toggle_random_visibility(facts=False, number=number)
+
+    def inverse_random_fact(self):
+        fact = random.choice(self.facts)
+
+        original_parent = fact.parent
+        # THIS ALSO SETS new_complex AS THE fact's PARENT!
+        new_complex = Complex('not', param1=fact)
+        fact.parent = new_complex
+        new_complex.parent = original_parent
+        if original_parent is not None:
+            if fact == original_parent.param1:
+                original_parent.param1 = new_complex
+            elif fact == original_parent.param2:
+                original_parent.param2 = new_complex
+            else:
+                print("Something is wrong.")
+            original_parent.set_depth(original_parent.depth)
+        self.facts.append(new_complex)
 
     def __str__(self):
         string = "\n(defrule\n"
 
         if self.comment_unused:
             for fact in self.primary_facts:
-                string += f"{fact.to_string(not self._facts[fact])}\n"
+                string += f"{fact.to_string(fact.visible)}\n"
 
             string += "=>\n"
 
-            for action, write in self._actions.items():
-                string += f"{action.to_string(not write)}\n"
+            for action in self.actions:
+                string += f"{action.to_string(action.visible)}\n"
         else:
             for fact in self.primary_facts:
-                if self._facts[fact]:
-                    string += f"{fact.to_string(False)}\n"
+                if fact.visible:
+                    string += f"{fact.to_string(visible=True)}\n"
             string += "=>\n"
-            for action, write in self._actions.items():
-                if write:
-                    string += f"{action.to_string(False)}\n"
+            for action in self.actions:
+                if action.visible:
+                    string += f"{action.to_string(visible=True)}\n"
 
         string += ")"
         return string
 
     def __repr__(self):
         return str(self)
-
-
-class AIParser:
-    @staticmethod
-    def read_single(path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per",
-                    raise_exception: bool = True):
-        """
-        Read a single .per file and return the AI.
-
-        :param path: The path to the .per file.
-        :param raise_exception: Whether to raise Exceptions if for example a file cannot be found.
-        :return: An instance of the AI class if found, else None.
-        """
-
-        if os.path.isfile(path):
-            if path.endswith(".per"):
-                return AI(path=path)
-            elif path.endswith(".pickle"):
-                ai = open(path, "rb")
-                return pickle.load(ai)
-            elif raise_exception:
-                raise Exception(f"Cannot read from {path}. The file is not a .per file.")
-        elif raise_exception:
-            raise Exception(f"Cannot read from {path}. No file found at that path.")
-        return None
-
-    @staticmethod
-    def read_multiple(path: str, names: set[str] = None, as_dict: bool = True):
-        """
-        Read multiple AI .per files in a directory and return a list containing the found AI's.
-
-        :param path: The path to the directory containing the .per files.
-        :param names: An optional set of names that will act as a filter when reading AIs.
-        :param as_dict: Whether to return the result as a dictionary. If False, returns the AI's in a list instead.
-        :return: A dict (keys are AI names) or list containing all the AIs, depending on the value of 'as_dict'.
-        """
-
-        if not os.path.isdir(path):
-            raise Exception(f"The path {path} does not exist or is not a directory.")
-
-        result = dict() if as_dict else []
-        found = set()
-        for file in os.listdir(path):
-
-            if file.endswith(".per"):
-                name = file.removesuffix(".per")
-            elif file.endswith(".pickle"):
-                name = file.removesuffix(".pickle")
-            else:
-                continue
-
-            if names and name not in names:
-                continue
-            ai = AIParser.read_single(os.path.join(path, file), raise_exception=False)
-            if ai:
-                if as_dict:
-                    result[name] = ai
-                else:
-                    result.append(ai)
-                found.add(name)
-
-        if len(found) != len(names):
-            print(f"We did not find all the AI's you were looking for: \n Query={names} \n Found={found}.")
-
-        return result
-
-    @staticmethod
-    def write_single(ai, target_directory: str, pickled: bool = True) -> bool:
-        if not dir_exists(target_directory, raise_exception=True) or not isinstance(ai, AI):
-            print(f"Warning! Writing AI {ai} failed.")
-            return False
-        if pickled:
-            pickle.dump(ai, os.path.join(target_directory, ai.name + ".pickle"))
-            return True
-        else:
-            ai.write()
-        return True
 
 
 class AI:
@@ -383,6 +327,14 @@ class AI:
             self.operators_inverse[operator_symbol] = operator_name
 
         self.constants, self.rules = self._parse_raw_content(content=self.raw_content)
+
+    def random_rule(self) -> Rule:
+        return random.choice(self.rules)
+
+    def random_rules(self, number: int = 1):
+        if number == 1:
+            return self.random_rule()
+        return random.choices(self.rules, k=number)
 
     @staticmethod
     def __repair_path(path: str) -> str:
@@ -568,13 +520,90 @@ class AI:
                 file.write(str(rule) + "\n\n")
 
 
+class AIParser:
+    @staticmethod
+    def read_single(path: str = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai\\Alpha.per",
+                    raise_exception: bool = True):
+        """
+        Read a single .per file and return the AI.
+
+        :param path: The path to the .per file.
+        :param raise_exception: Whether to raise Exceptions if for example a file cannot be found.
+        :return: An instance of the AI class if found, else None.
+        """
+
+        if os.path.isfile(path):
+            if path.endswith(".per"):
+                return AI(path=path)
+            elif path.endswith(".pickle"):
+                ai = open(path, "rb")
+                return pickle.load(ai)
+            elif raise_exception:
+                raise Exception(f"Cannot read from {path}. The file is not a .per file.")
+        elif raise_exception:
+            raise Exception(f"Cannot read from {path}. No file found at that path.")
+        return None
+
+    @staticmethod
+    def read_multiple(path: str, names: set[str] = None, as_dict: bool = True):
+        """
+        Read multiple AI .per files in a directory and return a list containing the found AI's.
+
+        :param path: The path to the directory containing the .per files.
+        :param names: An optional set of names that will act as a filter when reading AIs.
+        :param as_dict: Whether to return the result as a dictionary. If False, returns the AI's in a list instead.
+        :return: A dict (keys are AI names) or list containing all the AIs, depending on the value of 'as_dict'.
+        """
+
+        if not os.path.isdir(path):
+            raise Exception(f"The path {path} does not exist or is not a directory.")
+
+        result = dict() if as_dict else []
+        found = set()
+        for file in os.listdir(path):
+
+            if file.endswith(".per"):
+                name = file.removesuffix(".per")
+            elif file.endswith(".pickle"):
+                name = file.removesuffix(".pickle")
+            else:
+                continue
+
+            if names and name not in names:
+                continue
+            ai = AIParser.read_single(os.path.join(path, file), raise_exception=False)
+            if ai:
+                if as_dict:
+                    result[name] = ai
+                else:
+                    result.append(ai)
+                found.add(name)
+
+        if len(found) != len(names):
+            print(f"We did not find all the AI's you were looking for: \n Query={names} \n Found={found}.")
+
+        return result
+
+    @staticmethod
+    def write_single(ai: AI, target_directory: str, pickled: bool = True) -> bool:
+        if not dir_exists(target_directory, raise_exception=True) or not isinstance(ai, AI):
+            print(f"Warning! Writing AI {ai} failed.")
+            return False
+        if pickled:
+            pickle.dump(ai, os.path.join(target_directory, ai.name + ".pickle"))
+            return True
+        else:
+            ai.write()
+        return True
+
+
 # ai_path = "C:\\Program Files\\Microsoft Games\\age of empires ii\\Ai"
 example_path = "C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter\\test-read.per"
-ai = AIParser.read_single(example_path)
-for rule in ai.rules:
+example_ai = AIParser.read_single(example_path)
+for rule in example_ai.rules:
     rule.comment_unused = True
-    chosen_fact = random.choice(rule.primary_facts)
-    rule._facts[chosen_fact] = False
-    chosen_action = random.choice(rule.actions)
-    print(chosen_fact.to_string(False))
-ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter", "test-write")
+    rule.toggle_random_actions_visibility()
+    rule.toggle_random_facts_visibility()
+example_ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter", "test-write")
+
+
