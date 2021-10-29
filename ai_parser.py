@@ -243,6 +243,14 @@ class Rule:
     def primary_facts(self):
         return self.get_facts(depth=0)
 
+    @property
+    def simple_facts(self):
+        return [fact for fact in self.facts if fact.is_simple]
+
+    @property
+    def complex_facts(self):
+        return [fact for fact in self.facts if fact.is_complex]
+
     def get_facts(self, depth: int = None):
         if depth is None:
             return self.facts
@@ -315,6 +323,15 @@ class Rule:
             if fact.param2:
                 fact.param2.parent = None
             self.facts.remove(fact)
+
+    def switch_operator_random_fact(self):
+        fact = random.choice([fact for fact in self.complex_facts if fact.name != 'not'])
+        if fact.name == 'or':
+            fact.name = 'and'
+        elif fact.name == 'and':
+            fact.name = 'or'
+        elif fact.name in operators.keys():
+            fact.name = random.choice(['and', 'or'])
 
     def __str__(self):
         string = "\n(defrule\n"
