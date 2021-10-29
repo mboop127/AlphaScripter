@@ -3,7 +3,6 @@ import pickle
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Dict
 
 fact_names = {'attack-soldier-count', 'building-available', 'building-count', 'building-count-total',
               'building-type-count', 'building-type-count-total', 'can-afford-building', 'can-afford-complete-wall',
@@ -107,9 +106,14 @@ operators = {"and": "&", "or": "|", "not": '#', "nand": '$', "nor": '@'}
 @dataclass(init=True, repr=True, eq=True, order=True, frozen=False)
 class FactBase:
     name: str  # For a simple, this the name of the fact. For a Complex, this is an operator.
-    depth: int = field(init=False, default=0)
     parent: object = field(init=False, default=None)
     visible: bool = field(init=False, default=True)
+
+    @property
+    def depth(self):
+        if self.parent is None:
+            return 0
+        return self.parent.depth + 1
 
     @property
     def is_simple(self) -> bool:
@@ -118,9 +122,6 @@ class FactBase:
     @property
     def is_complex(self) -> bool:
         return not self.is_simple
-
-    def set_depth(self, value: int):
-        self.depth = value
 
     def to_string(self, visible: bool = False):
         pass
@@ -145,8 +146,6 @@ class Simple(FactBase):
 
         if self.params:
             self.length = self.relevant_length = len(params)
-
-        self.depth = 0
 
     @staticmethod
     def __get_params(params: list) -> tuple:
@@ -186,7 +185,14 @@ class Complex(FactBase):
         self.param2 = param2
         if self.param2:
             self.param2.parent = self
-        self.set_depth(0)  # Set the depths recursively
+
+    def overwrite_param(self, original_value, new_value):
+        if self.param1 == original_value:
+            self.param1 = new_value
+        elif self.param2 == original_value:
+            self.param2 = new_value
+        else:
+            print(f"We got a problem.")
 
     def to_string(self, visible: bool = False) -> str:
         if visible:
@@ -216,12 +222,6 @@ class Complex(FactBase):
             tabs = '\t' * (self.param2.depth * 2 + 1)  # The plus 1 is because every rule has every line indented 1 tab
             result += f"\n{tabs}{self.param2}"
         return result + ")"
-
-    def set_depth(self, value: int):
-        self.depth = value
-        self.param1.set_depth(value + 1)
-        if self.param2:
-            self.param2.set_depth(value + 1)
 
 
 class Rule:
@@ -267,21 +267,54 @@ class Rule:
 
     def inverse_random_fact(self):
         fact = random.choice(self.facts)
-
         original_parent = fact.parent
-        # THIS ALSO SETS new_complex AS THE fact's PARENT!
-        new_complex = Complex('not', param1=fact)
-        fact.parent = new_complex
-        new_complex.parent = original_parent
-        if original_parent is not None:
-            if fact == original_parent.param1:
-                original_parent.param1 = new_complex
-            elif fact == original_parent.param2:
-                original_parent.param2 = new_complex
-            else:
-                print("Something is wrong.")
-            original_parent.set_depth(original_parent.depth)
-        self.facts.append(new_complex)
+
+        # If we are called to remove an inversion on a 'not' Complex
+        if isinstance(fact, Complex) and fact.name == 'not':
+            self._remove_fact(fact)
+
+        # If we are called on something that has a 'not' complex as parent, remove that
+        elif original_parent is not None and original_parent.name == 'not':
+            self._remove_fact(original_parent)
+
+        # Else, insert a not Complex in between
+        else:
+            # THIS ALSO SETS new_complex AS THE fact's PARENT!
+            new_complex = Complex('not', param1=fact)
+            fact.parent = new_complex
+            new_complex.parent = original_parent
+            if original_parent is not None:
+                original_parent.overwrite_param(fact, new_complex)
+            self.facts.append(new_complex)
+
+    def remove_random_fact(self, primary_only: bool = True):
+        if primary_only:
+            self._remove_fact(random.choice(self.primary_facts))
+        else:
+            self._remove_fact(random.choice(self.facts))
+
+    def _remove_fact(self, fact: FactBase):
+        # If it's a simple fact, we can just remove it if it has depth 0.
+        # If it has a depth > 0, we cannot just remove it because that will give the parent a null pointer.
+        if fact.is_simple:
+            if fact.depth > 0:
+                print(f"We cannot remove fact {fact} because it has a parent. Skipping...")
+                return
+            self.facts.remove(fact)
+        elif fact.is_complex and fact.name == 'not':
+            child = fact.param1
+            child.parent = fact.parent
+            if fact.parent is not None:
+                fact.parent.overwrite_param(fact, child)
+            self.facts.remove(fact)
+        elif fact.is_complex:
+            if fact.depth > 0:
+                print(f"We cannot remove fact {fact} because it has a parent. Skipping...")
+                return
+            fact.param1.parent = None
+            if fact.param2:
+                fact.param2.parent = None
+            self.facts.remove(fact)
 
     def __str__(self):
         string = "\n(defrule\n"
@@ -602,8 +635,7 @@ example_path = "C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter\\test-read.per
 example_ai = AIParser.read_single(example_path)
 for rule in example_ai.rules:
     rule.comment_unused = True
-    rule.toggle_random_actions_visibility()
-    rule.toggle_random_facts_visibility()
+    rule.remove_random_fact()
 example_ai.write("C:\\Users\\Gabi\\Documents\\GitHub\\AlphaScripter", "test-write")
 
 
