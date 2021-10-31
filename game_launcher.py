@@ -83,6 +83,13 @@ starting_ages = {'standard': 0, 'dark': 2, 'feudal': 3, 'castle': 4, 'imperial':
 victory_types = {'standard': 0, 'conquest': 1, 'relics': 4, 'time_limit': 7, 'score': 8}
 
 
+def get_key_by_value(d: dict, v):
+    for key, value in d.items():
+        if v == value:
+            return key
+    return None
+
+
 class GameStatus(enum.Enum):
     NONE = "No status yet."  # If we read this there is probably something wrong.
     INIT = "Initialized"  # This means no process has been launched, no RPC client has been launched or anything.
@@ -158,10 +165,56 @@ class GameSettings:
                             self.resources, self.reveal_map, self.starting_age, self.victory_type, self.game_time_limit)
 
 
-@dataclass
+class PlayerStats:
+    index: int
+    name: str
+    alive: bool
+    score: int
+
+    def __init__(self, index: int, name: str):
+        self.name = name
+        self.index = index
+        self.alive = True
+        self.score = 0
+
+    def update(self, score, alive):
+        self.score = score
+        self.alive = alive
+
+
 class GameStats:
-    scores: list[int]
     elapsed_game_time: int
+    player_stats: dict
+    _settings: GameSettings
+
+    def __init__(self, settings: GameSettings):
+        self.elapsed_game_time = 0
+        self._settings = settings
+        self.player_stats = dict()
+        for index, name in enumerate(settings.names):
+            self.player_stats[index] = PlayerStats(index=index, name=name)
+
+    def update_player(self, index: int, score: int, alive: bool):
+        self.player_stats[index].update(score=score, alive=alive)
+
+    @property
+    def scores(self):
+        return [self.player_stats[i].score for i in range(len(self._settings.names))]
+
+    @property
+    def alives(self):
+        return [self.player_stats[i].alive for i in range(len(self._settings.names))]
+
+    def __str__(self):
+        string = f"Played @ {get_key_by_value(maps, self._settings.map_id)}" \
+                 f"[{get_key_by_value(map_sizes, self._settings.map_size)}] \n" \
+                 f"Elapsed Game Time: {self.elapsed_game_time} \n\n"
+        for i in range(len(self.player_stats)):
+            ps: PlayerStats = self.player_stats[i]
+            string += f"Player {i} '{ps.name}' ({get_key_by_value(all_civilisations,self._settings.civs[i])}) \n" \
+                      f"\t\t Score: {ps.score} \n" \
+                      f"\t\t Alive: {ps.alive} \n"
+        return string
 
 
 class Game:
@@ -267,6 +320,7 @@ class Game:
             message = f"Warning! Game Settings could not be applied to game {self.name} because of exception {e}" \
                       f" The rpc client will be closed and the game process will be terminated."
             self.handle_except(e, message)
+        self.stats = GameStats(settings=settings)
         self.status = GameStatus.SETUP
 
     async def start_game(self):
@@ -296,6 +350,7 @@ class Game:
             game_time = 0
             try:
                 game_time = self._rpc.call('GetGameTime')
+                self.stats.elapsed_game_time = game_time
             except BaseException as e:
                 message = f"Couldn't get game time for game {self.name} because of {e}. " \
                           f"Closing the RPC client and killing process."
@@ -304,22 +359,23 @@ class Game:
             over_time = 0 < self._settings.game_time_limit < game_time
 
             if not is_running or over_time:
-                scores = []
                 for index, name in enumerate(self._settings.names):
                     try:
                         score = self._rpc.call("GetPlayerScore", index + 1)
-                        if score is not None:
-                            scores.append(score)
+                        alive = self._rpc.call("GetPlayerAlive", index + 1)
+
+                        if score is not None and alive is not None:
+                            self.stats.update_player(index=index, score=score, alive=alive)
                         else:
-                            scores.append(0)
+                            self.stats.update_player(index=index, score=0, alive=False)
                             if self.debug:
-                                print(f"Couldn't get score for player {index + 1}. Setting this score to 0")
+                                print(f"Couldn't get score or alive status for player {name}. Setting this score to 0")
                     except BaseException as e:
-                        message = f"Score for player {index + 1} in game {self.name} couldn't be retrieved because " \
-                                  f"of {e}. Setting this players' score to 0."
-                        scores.append(0)
+                        message = f"Score and/or alive status for player {name} in game {self.name} couldn't be " \
+                                  f"retrieved because of {e}. Setting this players' score to 0."
+                        self.stats.update_player(index=index, score=0, alive=False)
                         self.handle_except(e, message)
-                self.stats = GameStats(scores, game_time)
+                self.status = GameStatus.ENDED
                 self.kill()
 
         except BaseException as e:
@@ -354,6 +410,21 @@ class Game:
             self._process.kill()
             self._process = None
         self.status = GameStatus.QUIT
+
+    def print_stats(self):
+        string = f"Game {self.name} Stats \n ------------------------------------------- \n" \
+                 f"Status: {self.status} \n"
+        string += str(self.stats)
+        print(string)
+        print("\n\n")
+
+    @property
+    def statistics(self):
+        return self.stats
+
+    @property
+    def scores(self):
+        return self.stats.scores
 
     def __str__(self):
         return self.name
@@ -471,4 +542,4 @@ ai_names = ['Barbarian', 'Barbarian', 'Barbarian', 'Barbarian']
 ai_civs = ['huns', 'celts', 'turks', 'persians']
 gs = GameSettings(names=ai_names, civilisations=ai_civs, map_size='tiny')
 launcher = Launcher(settings=gs, debug=True)
-launcher.launch_games(round_robin=True)
+games = launcher.launch_games(round_robin=True)
