@@ -461,7 +461,7 @@ class Launcher:
         return [game for game in self.games if game.status == GameStatus.RUNNING]
 
     def launch_games(self, instances: int = 1, round_robin: bool = False):
-        all_settings = [self.settings] * len(self.names) if not round_robin else self._apply_round_robin(self.settings)
+        all_settings = [self.settings] * instances if not round_robin else self._apply_round_robin(self.settings)
         if not round_robin:
             self.games = [Game(f"Game#{i + 1}", self.debug) for i in range(instances)]
         else:
