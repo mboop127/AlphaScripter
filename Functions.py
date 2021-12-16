@@ -116,7 +116,7 @@ def mutate_fact(fact):
 def mutate_action(action):
 
     action_name = action[0]
-    params = action[1]
+    params = action[1].copy()
 
     if random.random() < mutation_chance:
         action_name = random.choice(action_list)
@@ -150,8 +150,8 @@ def mutate_rule(rule):
     fact_length = rule[0]
     action_length = rule[1]
     age_required = rule[2]
-    local_facts = rule[3]
-    local_actions = rule[4]
+    local_facts = rule[3].copy()
+    local_actions = rule[4].copy()
 
     if random.random() < mutation_chance:
         fact_length = random.randint(1,max_fact_length)
