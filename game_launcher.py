@@ -118,7 +118,7 @@ class GameSettings:
         self.starting_age = self.__correct_setting(starting_age, starting_ages, 'dark', 'starting age')
         self.victory_type = self.__correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
         self.victory_value = 0  # TODO: Make this work.
-        self.game_time_limit = game_time_limit
+        self.game_time_limit = max(0, game_time_limit)
 
     @property
     def map(self):
@@ -361,7 +361,10 @@ class Game:
             if not is_running or over_time:
                 for index, name in enumerate(self._settings.names):
                     try:
-                        score = self._rpc.call("GetPlayerScore", index + 1)
+                        if game_time >= 1.5 * self._settings.game_time_limit:
+                            score = 0
+                        else:
+                            score = self._rpc.call("GetPlayerScore", index + 1)
                         alive = self._rpc.call("GetPlayerAlive", index + 1)
 
                         if score is not None and alive is not None:
@@ -425,6 +428,10 @@ class Game:
     @property
     def scores(self):
         return self.stats.scores
+
+    @property
+    def overtime(self):
+        return 0 < self._settings.game_time_limit < self.stats.elapsed_game_time
 
     def __str__(self):
         return self.name
