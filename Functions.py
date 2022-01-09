@@ -413,7 +413,10 @@ def write_ai(ai, ai_name):
     #default = ""
 
     if force_age_up:
-        default += "(defrule\n(true)\n=>\n(research 101))\n(defrule\n(true)\n=>\n(research 102))\n(defrule\n(true)\n=>\n(research 103))\n"
+        default += "(defrule\n(true)\n=>\n(research 101))\n(defrule\n(true)\n=>\n(research 102))\n"
+
+    if force_imperial_age:
+        default +="(defrule\n(true)\n=>\n(research 103))\n"
 
     if force_buildings:
         default += buildings_text
@@ -445,6 +448,13 @@ def write_ai(ai, ai_name):
     for i in range(len(ai[2])):
         c = write_rule(ai[2][i])
         f.write(c)
+
+    default = ""
+
+    if force_scout:
+        default += '\n(defrule\n\t(true)\n=>\n\t(set-strategic-number sn-total-number-explorers 1)\n\t(set-strategic-number sn-number-explore-groups 1)\n\t(up-send-scout 101 1)\n\t(disable-self)\n)'
+
+    f.write(default)
 
     f.close()
 

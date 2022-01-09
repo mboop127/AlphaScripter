@@ -718,7 +718,7 @@ def run_robin(threshold,load):
         parent_score, b_score, c_score, d_score = (0,0,0,0)
         score_list = [0,0,0,0]
 
-        for trials in range(2):
+        for trials in range(1):
 
             l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
             #master_score_list = [[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
@@ -872,9 +872,9 @@ def benchmarker(ai1, ai2, rounds, civs):
     print(str(ai1_wins) + "/" + str(ai2_wins) + "/" + str(stalemates) + "/" + str(failed_games))
 
 #run_ffa_four(0,True)
-run_ffa(0,False)
+#run_ffa(0,False)
 #run_vs(0, True)
-#run_vs_other(0,True,"Shadow 0",['huns','huns'],3)
+#run_vs_other(0,True,"Shadow 0",['huns','huns'],2)
 #run_vs_self(0,True)
-#run_robin(0,True)
+run_robin(0,True)
 #benchmarker("best","Shadow 0",100,['huns','huns'])
