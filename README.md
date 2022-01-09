@@ -5,7 +5,7 @@ compatible with Age of Empires II : Definitive Edition, but in practice a certai
 take place. This is currently a work in progress.
 
 ## Dependencies
-- `msgpackrpc >= 0.4.1` : A package used to communicate with running AOE processes. (To install, `pip install msppack-rpc-python`) 
+- `msgpackrpc >= 0.4.1` : A package used to communicate with running AOE processes. (To install, `pip install msgpack-rpc-python`) 
 - `psutil >= 5.8.0` : A package used to manage running processes.
 - `tornado == 4.3.5` : Should be automatically installed with `msgpackrpc`. 
 
