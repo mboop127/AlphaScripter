@@ -31,7 +31,8 @@ def extract_round_robin(score, time):
     elif score[1] > score[0]:
         p2 += 1
 
-    if time < .8 * game_time:
+    if time < .9 * game_time:
+        #print("real win!")
         p1 *= 2
         p2 *= 2
 
@@ -69,6 +70,7 @@ def create_seeds(threshold):
                 print(max(score_list))
 
                 if max(score_list) > threshold:
+                    save_ai(ai_parent,"seed")
                     return ai_parent
 
 def extract_ffa(master_score):
@@ -103,6 +105,8 @@ def extract_ffa(master_score):
 
 def run_ffa(threshold,load):
 
+    game_time = 5000
+    force_resign = False
     score_list = [[0,0,0,0,0,0,0,0]]
 
     if load:
@@ -166,7 +170,7 @@ def run_ffa(threshold,load):
             except:
                 pass
 
-        if score_list == [0,0,0,0,0,0,0,0] or score_list[0] == None:
+        if score_list == [0,0,0,0,0,0,0,0] or score_list[0] == None or len(master_score_list) < 3:
             if generation == 1:
                 generation -= 1
 
@@ -280,6 +284,8 @@ def run_ffa(threshold,load):
 
 def run_ffa_four(threshold,load):
 
+    game_time = 5000
+    force_resign = False
     score_list = [[0,0,0,0,0,0,0,0]]
 
     if load:
@@ -292,7 +298,7 @@ def run_ffa_four(threshold,load):
 
     ai_names = ['parent','b','c','d']
 
-    gs = GameSettings(civilisations = ['huns'] * 4, names = ai_names,  game_time_limit = game_time, map_id = 'arabia')
+    gs = GameSettings(civilisations = ['huns'] * 4, names = ai_names,  game_time_limit = game_time, map_id = 'arabia', map_size = 'tiny')
 
     second_place = copy.deepcopy(ai_parent)
     mutation_chance = default_mutation_chance
@@ -322,7 +328,7 @@ def run_ffa_four(threshold,load):
         # reads score
         l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
         master_score_list = [[0,0,0,0,0,0,0,0]]
-        master_score_list = [game.stats.scores for game in l.launch_games(instances = 7) if game.status != GameStatus.EXCEPTED]
+        master_score_list = [game.stats.scores for game in l.launch_games(instances = 5) if game.status != GameStatus.EXCEPTED]
         score_list = [0,0,0,0,0,0,0,0]
 
         for i in range(len(master_score_list)):
@@ -339,9 +345,14 @@ def run_ffa_four(threshold,load):
 
         else:
 
-            parent_score, b_score, c_score, d_score = extract_ffa(master_score_list)
+            #parent_score, b_score, c_score, d_score = extract_ffa(master_score_list)
 
-            score_list = [parent_score, b_score, c_score, d_score]
+            #score_list = [parent_score, b_score, c_score, d_score]
+
+            parent_score = score_list[0]
+            b_score = score_list[1]
+            c_score = score_list[2]
+            d_score = score_list[3]
 
             score_list = sorted(score_list, reverse=True)
 
@@ -409,98 +420,78 @@ def run_ffa_four(threshold,load):
                 generation = 0
                 ai_parent = create_seeds(threshold)
 
-def run_vs(ai_parent):
+def run_vs(threshold, load):
 
-    generation = 0
-    #generation = 1
+    if load:
+        ai_parent = read_ai("best")
+    else:
+        ai_parent = create_seeds(threshold)
+
     fails = 0
+    generation = 0
+    winner = copy.deepcopy(ai_parent)
 
     score_list = [[0,0,0,0,0,0,0,0]]
 
     gs = GameSettings(civilisations = ['huns'] * 2, names = ['parent','b'], map_size = 'tiny',  game_time_limit = game_time)
 
-    if generation == 0:
-        while score_list == [[0,0,0,0,0,0,0,0]] or score_list == None or score_list == []:
-            print("reset")
-
-            ai_parent = []
-
-            ai_parent = generate_ai()
-
-            write_ai(ai_parent, "parent")
-            write_ai(ai_parent, "b")
-
-            l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
-            score_list = [game.stats.scores for game in l.launch_games(instances=1) if game.status != GameStatus.EXCEPTED]
-
-
     while True:
 
         generation += 1
 
-        try:
+        b = mutate_ai(copy.deepcopy(ai_parent))
 
-            b = mutate_ai(ai_parent.copy.deepcopy())
-            write_ai(ai_parent, "parent")
-            write_ai(b, "b")
+        write_ai(ai_parent,"parent")
+        write_ai(b, "b")
 
-            failed = False
+        failed = False
 
 
-            l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
-            master_score_list = [game.stats.scores for game in l.launch_games(instances=10, round_robin=False) if game.status != GameStatus.EXCEPTED]
-            score_list = [0,0]
+        l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
 
-            for i in range(len(master_score_list)):
-                try:
-                    for ai in range(len(ai_names)):
-                        score_list[ai] += master_score_list[i][ai]
-                except:
-                    pass
+        games =  l.launch_games(instances = 7,round_robin=False)
+        games = [game for game in games if game.status != GameStatus.EXCEPTED]
 
+        master_score_list = []
+        times = []
+
+        for game in games:
+              master_score_list.append(game.stats.scores)
+              times.append(game.stats.elapsed_game_time)
+
+        score_list = [0,0]
+        real_wins = 0
+
+        for i in range(len(master_score_list)):
+            #try:
+
+            if master_score_list[i][1] > master_score_list[i][0]:
+                real_wins += 1
+
+
+        b_score = real_wins
+
+        # checks number of rounds with no improvement and sets annealing
+        if real_wins < 4:
+            fails += 1
+            if fails % 2 == 0:
+                mutation_chance = min(default_mutation_chance + fails / (1000 * anneal_amount),.2)
             else:
+                mutation_chance = max(default_mutation_chance - fails / (1000 * anneal_amount),.001)
+        else:
+            print("new best")
+            winner = copy.deepcopy(b)
+            fails = 0
+            mutation_chance = default_mutation_chance
 
-                parent_score = score_list[0]
-                b_score = score_list[1]
+        ai_parent = copy.deepcopy(winner)
+        write_ai(winner,"best")
+        save_ai(winner, "best")
 
-                # checks number of rounds with no improvement and sets annealing
-                if parent_score == max(score_list):
-                    fails += 1
-                    if fails % 2 == 0:
-                        mutation_chance = min(default_mutation_chance + fails / (1000 * anneal_amount),.2)
-                    else:
-                        mutation_chance = max(default_mutation_chance - fails / (1000 * anneal_amount),.001)
-                else:
-                    fails = 0
-                    mutation_chance = default_mutation_chance
+def run_vs_other(threshold, load, trainer, civs, robustness):
 
-
-                if parent_score == max(score_list):
-                    winner = ai_parent.copy.deepcopy()
-                    print("parent won by score: " + str(parent_score))
-
-                elif b_score == max(score_list):
-                    winner = b.copy.deepcopy()
-                    print("b won by score: " + str(b_score))
-
-
-                ai_parent = winner.copy.deepcopy()
-                write_ai(winner,"best")
-                save_ai(winner, "best")
-
-                #restarts after 10 fails
-                if fails > fails_before_reset:
-                    print("fail threshold exceeded, reseting...")
-                    write_ai(winner, str(max(score_list)))
-                    save_ai(winner, str(max(score_list)))
-                    fails = 0
-                    generation = 0
-                    ai_parent = generate_ai()
-
-        except KeyboardInterrupt:
-            input("enter anything to continue...")
-
-def run_vs_other(threshold, load, trainer):
+    force_resign = True
+    game_time = 10000
 
     if load:
         ai_parent = read_ai("best")
@@ -512,7 +503,7 @@ def run_vs_other(threshold, load, trainer):
 
     score_list = [[0,0,0,0,0,0,0,0]]
 
-    gs = GameSettings(civilisations = ['huns'] * 2, names = ['b',trainer], map_size = 'tiny',  game_time_limit = game_time)
+    gs = GameSettings(civilisations = civs, names = ['b',trainer], map_size = 'tiny',  game_time_limit = game_time)
 
     best = 0
 
@@ -531,17 +522,39 @@ def run_vs_other(threshold, load, trainer):
 
             failed = False
 
+            master_score_list = []
+            times = []
 
-            l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
-            master_score_list = [game.stats.scores for game in l.launch_games(instances=5, round_robin=False) if game.status != GameStatus.EXCEPTED]
+            for i in range(robustness):
+
+                l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
+
+                games =  l.launch_games(instances = 7,round_robin=False)
+                games = [game for game in games if game.status != GameStatus.EXCEPTED]
+
+
+                for game in games:
+                      master_score_list.append(game.stats.scores)
+                      times.append(game.stats.elapsed_game_time)
+
             score_list = [0,0]
+            real_wins = 0
 
             for i in range(len(master_score_list)):
-                try:
-                    for ai in range(len(ai_names)):
-                        score_list[ai] += master_score_list[i][ai]
-                except:
-                    pass
+                #try:
+
+                if master_score_list[i][0] > master_score_list[i][1]:
+                    multiplier = (game_time/times[i]) * 2
+                    if times[i]/game_time < .9:
+                        real_wins += 1
+                        multiplier *= 3
+                else:
+                    multiplier = 1
+
+                score_list[0] += master_score_list[i][0] * multiplier
+                #except:
+                #    pass
+                #    print("fail")
 
             if score_list != [0,0]:
 
@@ -557,26 +570,113 @@ def run_vs_other(threshold, load, trainer):
                         mutation_chance = max(default_mutation_chance - fails / (1000 * anneal_amount),.001)
                 else:
                     best = b_score
-                    print(str(best))
+                    print(str(best) + " real wins: " + str(real_wins))
                     winner = copy.deepcopy(b)
                     fails = 0
                     mutation_chance = default_mutation_chance
+
+                    ai_parent = copy.deepcopy(winner)
+                    write_ai(winner,"best")
+                    save_ai(winner, "best")
+
+
+        except KeyboardInterrupt:
+            input("enter anything to continue...")
+
+def run_vs_self(threshold, load):
+
+    force_resign = True
+    game_time = 10000
+
+
+    if load:
+        ai_parent = read_ai("best")
+    else:
+        ai_parent = create_seeds(threshold)
+
+    fails = 0
+    generation = 0
+
+    score_list = [[0,0,0,0,0,0,0,0]]
+
+    gs = GameSettings(civilisations = ['huns'] * 2, names = ['b','self'], map_size = 'tiny',  game_time_limit = game_time)
+
+    best = 0
+    write_ai(ai_parent,"self")
+
+    while True:
+
+        generation += 1
+
+
+        if generation != 1:
+            b = mutate_ai(copy.deepcopy(ai_parent))
+        else:
+            b = copy.deepcopy(ai_parent)
+
+        write_ai(b, "b")
+
+        failed = False
+
+
+        l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
+
+        games =  l.launch_games(instances = 7,round_robin=False)
+        games = [game for game in games if game.status != GameStatus.EXCEPTED]
+
+        master_score_list = []
+        times = []
+
+        for game in games:
+              master_score_list.append(game.stats.scores)
+              times.append(game.stats.elapsed_game_time)
+
+        score_list = [0,0]
+        real_wins = 0
+
+        for i in range(len(master_score_list)):
+            #try:
+
+            if master_score_list[i][0] > master_score_list[i][1]:
+                multiplier = (game_time/times[i]) * 2
+                if times[i]/game_time < .9:
+                    real_wins += 1
+                    multiplier *= 3
+            else:
+                multiplier = 1
+
+            score_list[0] += master_score_list[i][0] * multiplier
+            #except:
+            #    pass
+            #    print("fail")
+
+        if score_list != [0,0]:
+
+            b_score = score_list[0]
+            train_score = score_list[1]
+
+            # checks number of rounds with no improvement and sets annealing
+            if b_score < best:
+                fails += 1
+                if fails % 2 == 0:
+                    mutation_chance = min(default_mutation_chance + fails / (1000 * anneal_amount),.2)
+                else:
+                    mutation_chance = max(default_mutation_chance - fails / (1000 * anneal_amount),.001)
+            else:
+                best = b_score
+                print(str(best) + " real wins: " + str(real_wins))
+                winner = copy.deepcopy(b)
+                fails = 0
+                mutation_chance = default_mutation_chance
 
                 ai_parent = copy.deepcopy(winner)
                 write_ai(winner,"best")
                 save_ai(winner, "best")
 
-                #restarts after 10 fails
-                if fails > fails_before_reset:
-                    print("fail threshold exceeded, reseting...")
-                    write_ai(winner, str(max(score_list)))
-                    save_ai(winner, str(max(score_list)))
-                    fails = 0
-                    generation = 0
-                    ai_parent = generate_ai()
-
-        except KeyboardInterrupt:
-            input("enter anything to continue...")
+            if real_wins == 7:
+                write_ai(winner,"self")
+                print("reset!")
+                best = 0
 
 def run_robin(threshold,load):
 
@@ -592,7 +692,7 @@ def run_robin(threshold,load):
 
     second_place = copy.deepcopy(ai_parent)
 
-    gs = GameSettings(civilisations = ['huns'] * 5, names = ['parent','b','c','d'], map_size = 'tiny',  game_time_limit = game_time, map_id = 'mongolia')
+    gs = GameSettings(civilisations = ['huns'] * 5, names = ['parent','b','c','d'], map_size = 'tiny',  game_time_limit = game_time, map_id = 'arabia')
 
     while True:
 
@@ -726,8 +826,55 @@ def run_robin(threshold,load):
                 generation = 0
                 ai_parent = generate_ai()
 
+def benchmarker(ai1, ai2, rounds, civs):
 
-run_ffa_four(0,False)
-#run_vs(ai_parent)
-#run_vs_other(0,True,"Shadow 0")
+    force_resign = True
+    game_time = 10000
+
+    gs = GameSettings(civilisations = civs, names = [ai1,ai2], map_size = 'tiny',  game_time_limit = game_time)
+
+    ai1_wins = 0
+    ai2_wins = 0
+    stalemates = 0
+    failed_games = 0
+
+    rounds = int(rounds/7)
+
+    for x in range(rounds):
+
+        print(x)
+
+        l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
+
+        games =  l.launch_games(instances = 7,round_robin=False)
+        games = [game for game in games if game.status != GameStatus.EXCEPTED]
+
+        master_score_list = []
+        times = []
+
+        for game in games:
+              master_score_list.append(game.stats.scores)
+              times.append(game.stats.elapsed_game_time)
+
+        score_list = [0,0]
+
+        for i in range(len(master_score_list)):
+
+            if master_score_list[i][0] > master_score_list[i][1] and times[i]/game_time < .9:
+                ai1_wins += 1
+            elif master_score_list[i][0] < master_score_list[i][1] and times[i]/game_time < .9:
+                ai2_wins += 1
+            elif master_score_list[i][0] == [0,0]:
+                failed_games += 1
+            else:
+                stalemates += 1
+
+    print(str(ai1_wins) + "/" + str(ai2_wins) + "/" + str(stalemates) + "/" + str(failed_games))
+
+#run_ffa_four(0,True)
+run_ffa(0,False)
+#run_vs(0, True)
+#run_vs_other(0,True,"Shadow 0",['huns','huns'],3)
+#run_vs_self(0,True)
 #run_robin(0,True)
+#benchmarker("best","Shadow 0",100,['huns','huns'])
