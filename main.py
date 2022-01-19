@@ -488,10 +488,10 @@ def run_vs(threshold, load):
         write_ai(winner,"best")
         save_ai(winner, "best")
 
-def run_vs_other(threshold, load, trainer, civs, robustness):
+def run_vs_other(threshold, load, trainer, civs, robustness, infinite):
 
     force_resign = True
-    game_time = 10000
+    game_time = 7200
 
     if load:
         ai_parent = read_ai("best")
@@ -506,8 +506,9 @@ def run_vs_other(threshold, load, trainer, civs, robustness):
     gs = GameSettings(civilisations = civs, names = ['b',trainer], map_size = 'tiny',  game_time_limit = game_time)
 
     best = 0
+    real_wins = 0
 
-    while True:
+    while real_wins < 7 * robustness or infinite:
 
         generation += 1
 
@@ -539,15 +540,17 @@ def run_vs_other(threshold, load, trainer, civs, robustness):
 
             score_list = [0,0]
             real_wins = 0
+            multiplier = 1
 
             for i in range(len(master_score_list)):
                 #try:
 
                 if master_score_list[i][0] > master_score_list[i][1]:
                     multiplier = (game_time/times[i]) * 2
+                    #multiplier = 1
                     if times[i]/game_time < .9:
                         real_wins += 1
-                        multiplier *= 3
+                        multiplier *= 10
                 else:
                     multiplier = 1
 
@@ -579,14 +582,21 @@ def run_vs_other(threshold, load, trainer, civs, robustness):
                     write_ai(winner,"best")
                     save_ai(winner, "best")
 
+            if fails > 50:
+                print("reset")
+                best = 0
+                generation = 0
+
+            if real_wins < 1 and generation == 1:
+                generation = 0
 
         except KeyboardInterrupt:
             input("enter anything to continue...")
 
-def run_vs_self(threshold, load):
+def run_vs_self(threshold, load, robustness, infinite):
 
     force_resign = True
-    game_time = 10000
+    game_time = 7200
 
 
     if load:
@@ -602,9 +612,11 @@ def run_vs_self(threshold, load):
     gs = GameSettings(civilisations = ['huns'] * 2, names = ['b','self'], map_size = 'tiny',  game_time_limit = game_time)
 
     best = 0
+    real_wins = 0
+    max_real_wins = 0
     write_ai(ai_parent,"self")
 
-    while True:
+    while real_wins < 7 * robustness or infinite:
 
         generation += 1
 
@@ -618,37 +630,39 @@ def run_vs_self(threshold, load):
 
         failed = False
 
-
-        l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
-
-        games =  l.launch_games(instances = 7,round_robin=False)
-        games = [game for game in games if game.status != GameStatus.EXCEPTED]
-
-        master_score_list = []
-        times = []
-
-        for game in games:
-              master_score_list.append(game.stats.scores)
-              times.append(game.stats.elapsed_game_time)
-
         score_list = [0,0]
         real_wins = 0
 
-        for i in range(len(master_score_list)):
-            #try:
+        l = Launcher(executable_path = "C:\\Program Files\\Microsoft Games\\Age of Empires II\\age2_x1.5.exe", settings = gs)
 
-            if master_score_list[i][0] > master_score_list[i][1]:
-                multiplier = (game_time/times[i]) * 2
-                if times[i]/game_time < .9:
-                    real_wins += 1
-                    multiplier *= 3
-            else:
-                multiplier = 1
+        for z in range(robustness):
 
-            score_list[0] += master_score_list[i][0] * multiplier
-            #except:
-            #    pass
-            #    print("fail")
+            games =  l.launch_games(instances = 7,round_robin=False)
+            games = [game for game in games if game.status != GameStatus.EXCEPTED]
+
+            master_score_list = []
+            times = []
+
+            for game in games:
+                  master_score_list.append(game.stats.scores)
+                  times.append(game.stats.elapsed_game_time)
+
+            for i in range(len(master_score_list)):
+                #try:
+
+                if master_score_list[i][0] > master_score_list[i][1]:
+                    multiplier = (game_time/times[i]) * 2
+                    #multiplier = 1
+                    if times[i]/game_time < .9:
+                        real_wins += 1
+                        multiplier *= 4
+                else:
+                    multiplier = 1
+
+                score_list[0] += master_score_list[i][0] * multiplier
+                #except:
+                #    pass
+                #    print("fail")
 
         if score_list != [0,0]:
 
@@ -663,6 +677,8 @@ def run_vs_self(threshold, load):
                 else:
                     mutation_chance = max(default_mutation_chance - fails / (1000 * anneal_amount),.001)
             else:
+                if real_wins > max_real_wins:
+                    max_real_wins = real_wins
                 best = b_score
                 print(str(best) + " real wins: " + str(real_wins))
                 winner = copy.deepcopy(b)
@@ -670,12 +686,22 @@ def run_vs_self(threshold, load):
                 mutation_chance = default_mutation_chance
 
                 ai_parent = copy.deepcopy(winner)
-                write_ai(winner,"best")
-                save_ai(winner, "best")
+                if real_wins > 3:
+                    write_ai(winner,"best")
+                    save_ai(winner, "best")
 
-            if real_wins == 7:
-                write_ai(winner,"self")
-                print("reset!")
+            if real_wins == 7 * robustness or fails > 20:
+                if max_real_wins > 3:
+                    write_ai(winner,"self")
+                    print("success, reset!")
+                    backup()
+                    max_real_wins = 0
+                    generation = 1
+                else:
+                    ai_parent = read_ai("best")
+                    print("fail,    reset!")
+                    max_real_wins = 0
+                    generation = 1
                 best = 0
 
 def run_robin(threshold,load):
@@ -829,7 +855,7 @@ def run_robin(threshold,load):
 def benchmarker(ai1, ai2, rounds, civs):
 
     force_resign = True
-    game_time = 10000
+    game_time = 7200
 
     gs = GameSettings(civilisations = civs, names = [ai1,ai2], map_size = 'tiny',  game_time_limit = game_time)
 
@@ -869,12 +895,38 @@ def benchmarker(ai1, ai2, rounds, civs):
             else:
                 stalemates += 1
 
+        print(ai1_wins)
+
     print(str(ai1_wins) + "/" + str(ai2_wins) + "/" + str(stalemates) + "/" + str(failed_games))
+
+def end_script():
+    root.destroy()
+    exit()
+
+def backup():
+    print("backing up best")
+    f = open("best.txt",'r')
+    a = f.read()
+    f.close()
+
+    letters = ['1','2','3','4','5','6','7','8','9','0']
+    filename = ( ''.join(random.choice(letters) for i in range(10)) )
+
+    f = open(filename + ".txt",'w+')
+    f.write(a)
+    f.close()
 
 #run_ffa_four(0,True)
 #run_ffa(0,False)
 #run_vs(0, True)
-#run_vs_other(0,True,"Shadow 0",['huns','huns'],2)
-#run_vs_self(0,True)
-run_robin(0,True)
+#run_robin(0,True)
+#run_vs_other(0,True,"Shadow 0",['huns','huns'],1,False)
+#benchmarker("best","King",100,['huns','huns'])
 #benchmarker("best","Shadow 0",100,['huns','huns'])
+#benchmarker("best","Vicky",100,['huns','vikings'])
+#benchmarker("best","Reactionaryv9",100,['huns','vikings'])
+#run_vs_self(0,True,1,True)
+#benchmarker("best","Shadow 1",100,['huns','huns'])
+#run_vs_other(0,True,"Shadow 0",['huns','huns'],1,False)
+#run_vs_other(0,True,"Shadow 2",['huns','huns'],1,False)
+#run_vs_self(0,True,1,False)
