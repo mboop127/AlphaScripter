@@ -1,5 +1,5 @@
 # AlphaScripter
-Use the power of genetic algorithms to evolve AI scripts for Age of Empires II : Definitive Edition. 
+Use the power of genetic algorithms to evolve AI scripts for Age of Empires II. 
 For now this package runs in AOC Userpatch 1.5 to train. In theory, scripts generated this way should be
 compatible with Age of Empires II : Definitive Edition, but in practice a certain amount of porting will need to 
 take place. This is currently a work in progress.
