@@ -18,16 +18,12 @@ this DLL file [here.](https://github.com/FLWL/aoc-auto-game/releases/download/v1
 4. Open the Python file `Main.py`, adjust parameters and run the script. (WIP)
 
 ## What does it do? - Explanation per script
-### The Main Script `Main.py`
-On run, the script will generate an AI named "Alpha," load it into a game versus the training ai (Alpha *must* be in the second slot).
-The script will automatically start new games from the post game menu -- you may want to speed up the game in the first 
-round, and/or end the first round early as it won't count for scoring.
+### The Main Script `Gui.py`
+On run, a GUI will open with various options. To begin, I suggest running "FFA new." It will generate a functioning AI and then evolve it based on score against 7 mutations of the parent.
 
-Your game may crash. If it does, you can pause the script with control-v and reset. It will save the progress.
+I suggest checking settings.py and adjusting it as well. Many of the settings are self-explanatory, but please reach out with any questions.
 
 The best script so far will be saved as "best.per" in the .ai directory. It will be overwritten if you restart the script.
-
-The png files are necessary for the auto-load new game function.
 
 I will expand this later -- if you would like to help with this project, you can find me on the AI scripters discord 
 for aoe2 de and dm me.
