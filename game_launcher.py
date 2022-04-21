@@ -103,9 +103,9 @@ class GameStatus(enum.Enum):
 
 
 class GameSettings:
-    def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='medium', difficulty='hard',
+    def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='tiny', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
-                 victory_type='conquest', game_time_limit=0):
+                 victory_type='conquest', game_time_limit=0, speed = True):
 
         self.names = names
         self.civilisations = self.__correct_civilizations(civilisations, default='huns')
@@ -119,6 +119,7 @@ class GameSettings:
         self.victory_type = self.__correct_setting(victory_type, victory_types, 'conquest', 'victory type (WIP)')
         self.victory_value = 0  # TODO: Make this work.
         self.game_time_limit = max(0, game_time_limit)
+        self.speed = speed
 
     @property
     def map(self):
@@ -162,7 +163,7 @@ class GameSettings:
 
     def clone(self):
         return GameSettings(self.names, self.civilisations, self.map_id, self.map_size, self.difficulty, self.game_type,
-                            self.resources, self.reveal_map, self.starting_age, self.victory_type, self.game_time_limit)
+                            self.resources, self.reveal_map, self.starting_age, self.victory_type, self.game_time_limit, self.speed)
 
 
 class PlayerStats:
@@ -310,7 +311,7 @@ class Game:
             self._rpc.call_async('SetGameMapSize', settings.map_size)  # Set to medium map size
             self._rpc.call_async('SetGameVictoryType', settings.victory_type, settings.victory_value)
             self._rpc.call_async('SetRunUnfocused', True)
-            self._rpc.call_async('SetRunFullSpeed', True)
+            self._rpc.call_async('SetRunFullSpeed', settings.speed)
             # self.call_safe('SetUseInGameResolution', False, game_index=game_index)
             for index, name in enumerate(settings.names):
                 self._rpc.call_async('SetPlayerComputer', index + 1, name)
