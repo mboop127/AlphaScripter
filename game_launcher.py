@@ -103,13 +103,13 @@ class GameStatus(enum.Enum):
 
 
 class GameSettings:
-    def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='tiny', difficulty='hard',
+    def __init__(self, names: list, civilisations: list = None, map_id='arena', map_size='tiny', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
                  victory_type='conquest', game_time_limit=0, speed = True):
 
         self.names = names
         self.civilisations = self.__correct_civilizations(civilisations, default='huns')
-        self.map_id = self.__correct_setting(map_id, maps, 'arabia', 'map name/type')
+        self.map_id = self.__correct_setting(map_id, maps, 'arena', 'map name/type')
         self.map_size = self.__correct_setting(map_size, map_sizes, 'medium', 'map size')
         self.difficulty = self.__correct_setting(difficulty, difficulties, 'hard', 'difficulty')
         self.game_type = self.__correct_setting(game_type, game_types, 'random_map', 'game type')
