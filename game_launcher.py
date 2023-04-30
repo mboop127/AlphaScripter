@@ -32,7 +32,7 @@ all_civilisations = {
 }
 
 maps = {
-    "arabia": 9,
+    "arabia": 21, #was 9, replaced with 21, migration is now dry arabia
     "archipelago": 10,
     "baltic": 11,
     "black_forest": 12,
@@ -103,13 +103,13 @@ class GameStatus(enum.Enum):
 
 
 class GameSettings:
-    def __init__(self, names: list, civilisations: list = None, map_id='arena', map_size='tiny', difficulty='hard',
+    def __init__(self, names: list, civilisations: list = None, map_id='arabia', map_size='tiny', difficulty='hard',
                  game_type='random_map', resources='low', reveal_map='normal', starting_age='dark',
                  victory_type='conquest', game_time_limit=0, speed = True):
 
         self.names = names
         self.civilisations = self.__correct_civilizations(civilisations, default='huns')
-        self.map_id = self.__correct_setting(map_id, maps, 'arena', 'map name/type')
+        self.map_id = self.__correct_setting(map_id, maps, 'arabia', 'map name/type')
         self.map_size = self.__correct_setting(map_size, map_sizes, 'medium', 'map size')
         self.difficulty = self.__correct_setting(difficulty, difficulties, 'hard', 'difficulty')
         self.game_type = self.__correct_setting(game_type, game_types, 'random_map', 'game type')
@@ -349,6 +349,7 @@ class Game:
         try:
             is_running = self._rpc.call('GetGameInProgress')
             game_time = 0
+            self.stats.winner = 0
             try:
                 game_time = self._rpc.call('GetGameTime')
                 self.stats.elapsed_game_time = game_time
@@ -360,6 +361,12 @@ class Game:
             over_time = 0 < self._settings.game_time_limit < game_time
 
             if not is_running or over_time:
+                temp = self._rpc.call('GetWinningPlayers')
+                if len(temp) > 1:
+                    self.stats.winner = 0
+                else:
+                    self.stats.winner = temp[0]
+                #print(self._rpc.call('GetWinningPlayer'))
                 for index, name in enumerate(self._settings.names):
                     try:
                         if game_time >= 1.5 * self._settings.game_time_limit:
@@ -367,6 +374,7 @@ class Game:
                         else:
                             score = self._rpc.call("GetPlayerScore", index + 1)
                         alive = self._rpc.call("GetPlayerAlive", index + 1)
+                        #print(self.stats.winner)
 
                         if score is not None and alive is not None:
                             self.stats.update_player(index=index, score=score, alive=alive)
@@ -433,6 +441,10 @@ class Game:
     @property
     def overtime(self):
         return 0 < self._settings.game_time_limit < self.stats.elapsed_game_time
+
+    @property
+    def winner(self):
+        return self.stats.winner
 
     def __str__(self):
         return self.name
