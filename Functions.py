@@ -1172,27 +1172,6 @@ def mutate_ai(ai, mutation_chance):
                 s = generate_simple()
                 local[0].append(s)
 
-                if s[0] == 'train' and s[1]['Trainable'] in unitBuildingMap:
-                    type = 'build'
-                    goal = random.randint(1,40)
-                    use_goal = False
-
-                    requirement = random.choice(Trainable + Buildable + paramdict['TechId'].split(";") + [''])
-
-                    params = generate_parameters()
-                    strategic_numbers = generate_sn_values()
-                    params['Buildable'] = unitBuildingMap[s[1]['Trainable']]
-
-                    threshold = 0
-                    age_required = [""]
-
-                    gametime = 0
-                    requirement_count = 0
-
-                    local[0].append([type,params,threshold,age_required,requirement,requirement_count,gametime,strategic_numbers,goal,use_goal])
-                    print("triggered")
-
-
         if random.random() < mutation_chance / 2:
             local[0].remove(random.choice(local[0]))
 
@@ -1982,6 +1961,9 @@ def generate_DUC_search():
 
     self_selected = random.choice(player_list)
     self_selected_max = random.randint(0,40)
+    selected = random.choice(player_list)
+    selected_max = random.randint(0,40)
+    distance_check = random.choice([True,False])
 
     used_filters = random.randint(0,5)
 
@@ -1996,7 +1978,7 @@ def generate_DUC_search():
 
     group_id = random.randint(0,9)
 
-    return( [self_selected,self_selected_max,used_filters,filters,group_id] )
+    return( [self_selected,self_selected_max,used_filters,filters,group_id,selected,selected_max,distance_check] )
 
 def mutate_DUC_search(search, mutation_chance):
     self_selected = search[0]
@@ -2004,6 +1986,21 @@ def mutate_DUC_search(search, mutation_chance):
     used_filters = search[2]
     filters = search[3].copy()
     group_id = search[4]
+    selected = search[5]
+    selected_max = search[6]
+    distance_check = search[7]
+
+    if random.random() < mutation_chance:
+        selected = random.choice(player_list)
+
+    if random.random() < mutation_chance:
+        if random.random() < .25:
+            selected_max = random.randint(0,40)
+        else:
+            selected_max += random.randint(-5,5)
+
+    if random.random() < mutation_chance:
+        distance_check = random.choice([True,False])
 
     if random.random() < mutation_chance:
         self_selected = random.choice(player_list)
@@ -2033,7 +2030,7 @@ def mutate_DUC_search(search, mutation_chance):
     if random.random() < mutation_chance:
         group_id = random.randint(0,9)
 
-    return( [self_selected,self_selected_max,used_filters,filters,group_id] )
+    return( [self_selected,self_selected_max,used_filters,filters,group_id,selected,selected_max,distance_check] )
 
 def generate_DUC_target():
 
@@ -2162,12 +2159,31 @@ def write_DUC_search(search):
     used_filters = search[2]
     filters = search[3]
     group_id = search[4]
+    selected = search[5]
+    selected_max = search[6]
+    distance_check = search[7]
+
+
+    used_const = "enemyPlayerID"
 
     string = ""
 
-    string += "\n(defrule\n\t(true)\n=>\n\t(up-full-reset-search)\n\t(up-reset-filters)\n"
+    string += "\n(defrule\n\t(true)\n=>\n\t(up-full-reset-search)\n\t(up-reset-filters)\n\t(set-strategic-number 251 " + used_const + ")\n\t(set-strategic-number 249 " + used_const+ "))\n"
 
-    string += "\t(up-find-local c: " + str(self_selected) + " c: " + str(self_selected_max) + "))\n\n"
+    if distance_check:
+        string += "\n(defrule\n\t(true)\n=>\n"
+        string += "\t(up-find-remote c: " + str(selected) + " c: " + str(selected_max) + "))\n\n"
+
+        string += "\n(defrule\n\t(true)\n=>\n\t(up-set-target-object 2 c: 0))"
+
+        string += "\n(defrule\n\t(true)\n=>\n"
+        string += "\n\t (up-get-point 12 55))\n"
+
+        string += "\n(defrule\n\t(true)\n=>\n\t(up-set-target-point 55))\n"
+
+    string += "\n(defrule\n\t(true)\n=>\n\t"
+
+    string += "(up-find-local c: " + str(self_selected) + " c: " + str(self_selected_max) + "))\n\n"
 
     string += "\n(defrule\n\t(true)\n=>\n"
 
@@ -2239,12 +2255,18 @@ def write_DUC_target(target):
     else:
         string += ")"
 
-    if use_goal:
+    if use_goal and not target_position:
         string += "\n(defrule\n\t(timer-triggered " + str(timer_id) + ")" + "\n\t(goal " + str(goal) + " 1)" + "\n\t(up-compare-goal 51 > 0)\n=>\n\t(up-target-objects 0 " + str(action) + " " + str(formation) + " " + str(stance) + ")"
-
-    else:
+    elif use_goal and target_position:
         string += "\n\n(defrule\n\t(timer-triggered " + str(timer_id) + ")" + "\n\t(goal " + str(goal) + " 1)" + "\n\t(up-compare-goal 51 > 0)\n=>\n\t(up-get-point " + str(position) + " 52)\n\t(up-target-point 52 " + str(action) + " " + str(formation) + " " + str(stance) + ")"
+    elif not use_goal and not target_position:
+        string += "\n(defrule\n\t(timer-triggered " + str(timer_id) + ")" + "\n\t(up-compare-goal 51 > 0)\n=>\n\t(up-target-objects 0 " + str(action) + " " + str(formation) + " " + str(stance) + ")"
+    else:
+        string += "\n\n(defrule\n\t(timer-triggered " + str(timer_id) + ")" + "\n\t(up-compare-goal 51 > 0)\n=>\n\t(up-get-point " + str(position) + " 52)\n\t(up-target-point 52 " + str(action) + " " + str(formation) + " " + str(stance) + ")"
+
 
     string += "\n\t(enable-timer " + str(timer_id) + " " + str(timer_time) + "))\n\n"
+
+    string += "(defrule\n\t(true)\n\t=>\n\t(up-full-reset-search)\n\t(up-reset-filters)\n\t(set-strategic-number 251 enemyPlayerID)\n\t(set-strategic-number 249 enemyPlayerID))"
 
     return string

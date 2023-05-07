@@ -1899,7 +1899,7 @@ def run_vs_selfs(threshold, load, robustness, infinite):
     write_ai(self3,"self3")
     group_list = ["self","self2","self3"]
 
-    test_ai = 'Reactionaryv9'
+    test_ai = 'king'
 
     mutation_chance = default_mutation_chance
     sets_to_be_run = len(group_list) * robustness
@@ -1937,7 +1937,7 @@ def run_vs_selfs(threshold, load, robustness, infinite):
             if game.stats.winner == 1:
                 test_wins += 1
 
-        if test_wins >= 4: #change to adjust threshold vs test ai
+        if test_wins >= 7: #change to adjust threshold vs test ai
             for z in range(robustness):
 
                 if nest_break:

@@ -3,7 +3,7 @@ fails_before_reset = 1000
 #game_time = 3000
 game_time = 7800
 
-default_mutation_chance = .02
+default_mutation_chance = .01
 anneal_amount = 5 #bigger = less annealing
 max_fact_length = 4
 max_action_length = 3
@@ -52,7 +52,7 @@ arenaDict =   {
   }
 
 #ai_ladder = ["Shadow 3.1","NightMare3","farmertron"]
-ai_ladder = ["Promi","Barbarian","TRiBaL_Warrior"]
+ai_ladder = ["BambiV030","UlyssesWK","Barbarian","Promi"]
 #ai_ladder = ['The_Unknown3','Vicky','GamesGod','BambiV030','Ranger 3.04','VNS_Halen_','Shadow 4.11','Crusade 4.42c','UlyssesWK','The Khanate','UnfairSteel','TRiBaL_Warrior','Barbarian','The Horde']
 #ai_ladder = ['Reactionaryv9', 'Arabian_Knight', 'BambiV030', 'Barbarian', 'Crusade 4.42c', 'GamesGod', 'Ranger 3.04', 'Shadow 4.11', 'Subjugator', 'The Horde', 'The Khanate', 'The_Unknown3', 'TRiBaL_Warrior', 'UlyssesWK', 'UnfairSteel', 'Vicky', 'VNS_Chris_Tournament', 'VNS_Halen_']
 

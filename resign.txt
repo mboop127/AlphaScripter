@@ -1,0 +1,98 @@
+;(defrule
+;(game-time > 1500)
+;(game-time < 1600)
+;(players-building-type-count any-enemy town-center < 1)
+;=>
+;(chat-to-all "failed to scout, GG")
+;(disable-self)
+;(resign)
+;)
+
+(defrule
+(game-time > 1200)
+(current-age == dark-age)
+(up-research-status c: feudal-age >= 2)
+(not(players-current-age any-enemy == dark-age))
+=>
+(chat-to-all "Stuck in dark age, GG")
+(resign)
+)
+
+(defrule
+(game-time > 900)
+(population < 20)
+(players-population any-enemy > 40);50
+(not(players-current-age any-enemy == dark-age))
+=>
+(chat-to-all "Crippled early game GG")
+(resign)
+)
+
+(defrule
+(game-time > 1200)
+(or(population < 40)
+(and(unit-type-count-total villager < 40)
+(military-population < 5)))
+(or(players-military-population any-enemy >= 50)
+(players-population any-enemy >= 100))
+(or(players-civilian-population any-enemy >= 75)
+(players-population any-enemy >= 100))
+=>
+(chat-to-all "Their eco and military are too strong. GG")
+(resign)
+)
+
+(defrule
+(game-time > 1200)
+(or(population < 60)
+(and(unit-type-count-total villager < 60)
+(military-population < 10)))
+(or(players-military-population any-enemy >= 80)
+(players-population any-enemy >= 150));160
+(or(players-civilian-population any-enemy >= 125)
+(players-population any-enemy >= 150));160
+=>
+(chat-to-all "We may still have a lot, but they are too strong. GG")
+(resign)
+)
+
+(defrule
+(building-type-count-total town-center < 1)
+(unit-type-count-total villager < 30)
+(players-population any-enemy >= 60)
+(military-population < 5)
+=>
+(chat-to-all "Lost TCs, GG")
+(resign)
+)
+
+(defrule
+(game-time > 600)
+(unit-type-count-total villager < 10)
+=>
+(chat-to-all "We have too few villagers to fight back, GG")
+(resign)
+)
+
+(defrule
+(game-time > 1500)
+(unit-type-count-total villager < 20)
+=>
+(chat-to-all "Lost too many vills at this stage, GG")
+(resign)
+)
+
+(defrule
+   ;(cc-players-unit-type-count 0 66 == 0) ;Gold is gone
+   ;(cc-players-unit-type-count 0 915 == 0) ;Wood is gone
+   (military-population < 20)
+   (current-age-time >= 900)
+   (current-age >= castle-age)
+   ;(not(can-build farm))
+   (gold-amount < 100)
+   (players-current-age any-enemy == imperial-age)
+   (players-military-population any-enemy >= 30)
+=>
+  (chat-to-all "Can't produce any military. Enemy is in Imp. GG")
+  (resign)
+) 

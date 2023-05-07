@@ -138,7 +138,7 @@ def write_from_csv(file):
             bool = False
             if line[14] == 'TRUE':
                 bool = True
-            AI[2] = [[line[0],line[1],line[2],[line[3],line[4],line[5]],[line[6],line[7],line[8]],[line[9],line[10]],line[11],line[12],line[13],line[14],bool]] + AI[2]
+            AI[2] = [[line[0],line[1],line[2],[line[3],line[4],line[5]],[line[6],line[7],line[8]],[line[9],line[10]],line[11],line[12],line[13],line[15],bool]] + AI[2]
 
     for i in range(2,len(goals)):
         line = goals[i].split(",")
@@ -186,8 +186,11 @@ def write_from_csv(file):
             temp[1] = int(line[1])
             temp[2] = int(line[2])
             temp[4] = int(line[3])
+            temp[5] = line[4]
+            temp[6] = int(line[5])
+            temp[7] = line[6] == 'TRUE'
             for x in range(len(temp[3])):
-                local = line[4 + x].split(";")
+                local = line[7 + x].split(";")
                 temp[3][x] = [int(local[0]),local[1],int(local[2])]
             #print(temp[3])
 
@@ -390,15 +393,19 @@ def swap(name1, name2):
     save_ai(ai1, "best")
 
 def write_DUC_search_local(search):
+
     self_selected = search[0]
     self_selected_max = search[1]
     used_filters = search[2]
-    filters = search[3]
+    filters = search[3].copy()
     group_id = search[4]
+    selected = search[5]
+    selected_max = search[6]
+    distance_check = search[7]
 
     string = ""
 
-    string += str(self_selected) + "," + str(self_selected_max) + "," + str(used_filters) + "," + str(group_id) + ","
+    string += str(self_selected) + "," + str(self_selected_max) + "," + str(used_filters) + "," + str(group_id) + "," + str(selected) + "," + str(selected_max) + "," + str(distance_check) + ","
 
     for i  in range(len(filters)):
 
